@@ -445,22 +445,23 @@ def online_learning_loop(iter_num, env, alg_dic):
     iter_count = 0
     for i in range(iter_num):
         x = vw_example[i]
-        x = pyvw.example(alg_dic[m], x)
         y = Y[i]
         #get label and accumuate loss
         for m in alg_dic:
-            y_pred= alg_dic[m].predict(x)
-            loss = x.get_loss()
-            cumulative_loss[m] = alg_dic[m].get_sum_loss()
-            cumulative_loss_list[m].append(cumulative_loss[m])
+            # x = pyvw.example(alg_dic[m], x)
+            vw_x = pyvw.example(alg_dic[m], x)
+            y_pred= alg_dic[m].predict(vw_x)  
             # print('learner', m, y_zpred, y, loss)
             if 'auto' not in m: 
-                alg_dic[m].learn(x)
+                alg_dic[m].learn(vw_x)
+                loss = vw_x.get_loss()
+                cumulative_loss[m] = alg_dic[m].get_sum_loss()
+                cumulative_loss_list[m].append(cumulative_loss[m])
                 print( 'sum loss', alg_dic[m].get_sum_loss(), cumulative_loss[m])
-                print('loss', y_pred, x.get_feature_number(), x.get_tag(), x.get_loss())
-                alg_dic[m].finish_example(x)
+                print('loss', y_pred, vw_x.get_feature_number(), vw_x.get_tag(), vw_x.get_loss())
+                alg_dic[m].finish_example(vw_x)
             else: 
-                alg_dic[m].learn(x, y)
+                alg_dic[m].learn(vw_x, y)
 
     #plot cumulative losses
     for b in alg_dic:
