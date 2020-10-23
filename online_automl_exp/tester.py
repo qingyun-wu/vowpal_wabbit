@@ -414,7 +414,7 @@ class AutoOnlineLearner:
         if self.cost_budget and len(self.learner_dic)!=0:
             self._learner_cleaning()
 
-def online_learning_loop(iter_num, env, alg_dic, loss_func):
+def online_learning_loop(iter_num, env, alg_dic):
     """ the online learning loop
     Inputs
     ----------
@@ -430,15 +430,12 @@ def online_learning_loop(iter_num, env, alg_dic, loss_func):
         An algorithm instance has the following functions:
         - method.learn(example)
         - method.predict(example)
-    loss_func: loss function
     """
     X = env.vw_x_dic_list
     Y = env.Y
     vw_example = env.vw_examples
     cumulative_loss_list, cumulative_loss = {}, {}
     for m in alg_dic: cumulative_loss_list[m], cumulative_loss[m] = [], 0
-
-    n_lower = int(np.sqrt(iter_num))
     iter_count = 0
     for i in range(iter_num):
         x = vw_example[i]
@@ -446,19 +443,14 @@ def online_learning_loop(iter_num, env, alg_dic, loss_func):
         y = Y[i]
         #get label and accumuate loss
         for m in alg_dic:
-            # x = pyvw.example(alg_dic[m], x)
             y_pred= alg_dic[m].predict(x)
             loss = x.get_loss()
-            # loss = loss_func(y_pred, y)
-            # cumulative_loss[m] = cumulative_loss[m] + loss
             cumulative_loss[m] = alg_dic[m].get_sum_loss()
             cumulative_loss_list[m].append(cumulative_loss[m])
             # print('learner', m, y_zpred, y, loss)
             if 'auto' not in m: 
-                # x.learn()
                 alg_dic[m].learn(x)
                 print( 'sum loss', alg_dic[m].get_sum_loss(), cumulative_loss[m])
-                # print( x.get_tag(), x.num_namespaces(), x.namespace() )
                 print('loss', y_pred, x.get_feature_number(), x.get_tag(), x.get_loss())
                 alg_dic[m].finish_example(x)
             else: 
@@ -500,11 +492,11 @@ if __name__=='__main__':
     alg_dic = {}
     alg_dic['naive learner'] = pyvw.vw()
     alg_dic['oracle learner'] = pyvw.vw(q='ab')
-    alg_dic['auto learner'] = AutoOnlineLearner(fm_generator = fm_generator, 
-        loss_func=squared_error, cost_budget = args.cost_budget, 
-        policy_budget = args.policy_budget)
+    # alg_dic['auto learner'] = AutoOnlineLearner(fm_generator = fm_generator, 
+    #     loss_func=squared_error, cost_budget = args.cost_budget, 
+    #     policy_budget = args.policy_budget)
 
-    online_learning_loop(args.iter_num, env, alg_dic, loss_func=squared_error)
+    online_learning_loop(args.iter_num, env, alg_dic)
 
 ## command lines to run exp
 # conda activate vw
