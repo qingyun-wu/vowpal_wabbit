@@ -194,6 +194,7 @@ class Environment:
         # "1 | price:.18 sqft:.15 age:.35 1976",
         # "0 | price:.53 sqft:.32 age:.87 1924",]
 
+#TODO: custromized wrapper around vw learner
 class Learner(pyvw.vw):
     """ This is a custromized wrapper around vw learner.
         Comparing to pyvw.vw, it has additional information including
@@ -203,10 +204,9 @@ class Learner(pyvw.vw):
         - loss_lb: the lower bound of the loss
         - cost: accumulated cost consumed
         - feature_map: feature map used, which is a list of namespaces and their interactions
-        - loss function #TODO: maybe this is not needed
     """
     C = 0.05 #constant parameter used when constructing cb
-    def __init__(self, feature_map, feature_map_id, loss_func, *kw):
+    def __init__(self, feature_map, feature_map_id, interactions, **basic_vw_args):
         self.feature_map=feature_map
         self.id = feature_map_id
         self.loss_avg=0.0
@@ -214,13 +214,12 @@ class Learner(pyvw.vw):
         self.loss_ub= self.loss_avg + self.cb #upper bound of the loss
         self.loss_lb= self.loss_avg - self.cb #lower bound of the loss
         self.use_count=0.0
-        self.loss_func= squared_error
         self.fm_complexity=len(self.feature_map)
         self.C = Learner.C
         self.cost = 0
         self.loss_lower = 0.0
         self.loss_upper = 1.0
-        super().__init__(*kw)
+        super().__init__(q=interactions, **basic_vw_args)
     
     def learn(self, x, y, loss):
         self.loss_avg = (self.loss_avg*self.use_count + loss
@@ -246,16 +245,17 @@ class AutoOnlineLearner:
     fm_generator: 
         It can generate a list of feature maps through fm_generator.feature_map_set_generator
         It can rank the generated feature map set through fm_generator.rank_feature_map_set
-    loss_func: loss function
     cost_budget: budget on the cost
     policy_budget: budget on the number of policies that can be evaluted at each iteration
+    **basic_vw_args: the args dic used to build a basic vw learner
     """
 
-    def __init__(self, fm_generator, loss_func, cost_budget = None, policy_budget = None):
+    def __init__(self, fm_generator, cost_budget = None, policy_budget = None, **basic_vw_args):
         self.fm_generator = fm_generator
-        self.loss_func = loss_func
         #maintain a dictionary of learners. key: fm_id, value: learner
         self.learner_dic = {}
+        self.basic_vw_args = basic_vw_args
+
         self.cost_budget = cost_budget
         self.policy_budget = policy_budget
         self.seed_fm = None
@@ -268,7 +268,7 @@ class AutoOnlineLearner:
         self.GENERATE_new_fm_set = False
         self.iter_count = 0
         self.i = 0
-
+        
     def predict(self, x):
         """ Predict on the example
         Parameters
@@ -300,6 +300,9 @@ class AutoOnlineLearner:
         #TODO: label can be obtained from x
         """
         self._update_learners(x,y)
+    
+    def _initialize_learner(self, fm, fm_id, interaction):
+        return Learner(fm, fm_id, interaction, **self.basic_vw_args)
 
     def _generate_new_fm_condition_satisfied(self, best_learner, seed_learner):
         # print(best_learner.loss_ub, best_learner.loss_lb, seed_learner.loss_lb)
@@ -331,7 +334,8 @@ class AutoOnlineLearner:
                     b = self.learner_dic[b_id].feature_map
                     inter_arg = fm2inter_arg(fm)
                     # vw_model = pyvw.vw(" --quiet " + str(inter_arg))
-                    self.learner_dic[b_id] = Learner(b, b_id, self.loss_func, " --quiet " + str(inter_arg))
+                    self.learner_dic[b_id] = self._initialize_learner(b, b_id, inter_arg)
+                    # self.learner_dic[b_id] = Learner(b, b_id, " --quiet " + str(inter_arg))
                     self.cost_budget = self.cost_budget*2+1
                 except:
                     pass
@@ -356,8 +360,9 @@ class AutoOnlineLearner:
                 inter_arg = fm2inter_arg(fm)
                 print('add learner', inter_arg)
                 vw_model = pyvw.vw()
-                self.learner_dic[fm_id] = Learner(fm, fm_id, self.loss_func,
-                     " --quiet " + str(inter_arg))
+                self.learner_dic[fm_id] = self._initialize_learner(fm, fm_id, str(inter_arg))
+                # self.learner_dic[fm_id] = Learner(fm, fm_id, self.loss_func,
+                #      " --quiet " + str(inter_arg))
             loss_ub[fm_id] = self.learner_dic[fm_id].loss_ub
         import operator
         self.best_learner_id = min(loss_ub.items(), key=operator.itemgetter(1))[0]
@@ -384,7 +389,8 @@ class AutoOnlineLearner:
                         inter_arg = fm2inter_arg(fm)
                         print('add learner',inter_arg)
                         # vw_model = pyvw.vw(" --quiet " + str(inter_arg))
-                        self.learner_dic[fm_id]= Learner(fm, fm_id, self.loss_func, " --quiet " + str(inter_arg))
+                        self.learner_dic[fm_id]= self._initialize_learner(fm, fm_id, str(inter_arg))
+                        # self.learner_dic[fm_id]= Learner(fm, fm_id, self.loss_func, " --quiet " + str(inter_arg))
                 #TODO: need to create learner for all fm_set
             #generate a ranked list of the feature map set (if policy_budget is not None and 
             # is smaller than the total size of the feature map set, it will return the top ranked
@@ -487,17 +493,19 @@ if __name__=='__main__':
 
     #specify a feature map generator
     fm_generator = FM_Set_Generator(env.raw_ns)
-
+    
+    basic_vw_args = {'l2': 0.1, 'loss_function': 'squared'}
     #instantiate several vw learners (as baselines) and an AutoOnlineLearner
     alg_dic = {}
-    alg_dic['naive learner'] = pyvw.vw()
-    alg_dic['oracle learner'] = pyvw.vw(q='ab')
+    alg_dic['naive learner'] = pyvw.vw(**basic_vw_args)
+    alg_dic['oracle learner'] = pyvw.vw(q='ab', **basic_vw_args)
     # alg_dic['auto learner'] = AutoOnlineLearner(fm_generator = fm_generator, 
-    #     loss_func=squared_error, cost_budget = args.cost_budget, 
-    #     policy_budget = args.policy_budget)
+    #     cost_budget = args.cost_budget, policy_budget = args.policy_budget, **basic_vw_args)
 
     online_learning_loop(args.iter_num, env, alg_dic)
 
 ## command lines to run exp
 # conda activate vw
 # python tester.py -i 30
+
+
