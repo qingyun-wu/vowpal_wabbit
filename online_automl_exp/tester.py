@@ -41,6 +41,85 @@ def cob_list_of_tuple(list1, list2):
                 new_list.append(new_tuple)
     return new_list
 
+
+class Learner:
+    """class for the online learner
+    """
+
+    unchanging_config = {}
+    def __init__(self, config: dict):
+        #TODO: initialize a learner based on the input config
+        # initialize the total number of evaluation made by the learner
+        self._evaluation_count = 0 
+        self._sum_loss = 0
+
+    def learn(self, data_x, data_y):
+        # learning step
+        # TODO: add learning step
+        # TODO: update self._sum_loss
+        self._evaluation_count += len(data_x)
+        pass 
+    def predict(self, data_x):
+        # TODO: prediction step
+        pass 
+
+    def get_sum_loss(self):
+        return self._sum_loss
+        # get the total loss incurred in historical learning iterations
+    
+    def get_prediction_count(self):
+        return self._prediction_count
+        
+
+class ConfiguredLearner:
+    """class for a hyperparameter choice
+    """
+
+    const = 0.1
+    def __init__(self, base_learner: Learner, config, **params):
+        self.learner = base_learner(config)
+        self.config = config
+        self.resource_used = 0
+        self._sum_loss = 0
+        self._eval_count = 0
+        self.avg_loss = 0 # usually use empirical negative loss as the empirical score
+        self.avg_loss_cb = 0 # confidence bound of the empirical score estimation
+        
+    def eval_incremental(self, data_X, data_Y):
+        #TODO: need to check base_learner.learn() function
+        # perform learning and get the resource for the learning step
+        self.learner.predict(data_X)
+
+        # update total resource used
+        resource = self.learner.learn(data_X,data_Y)
+
+        # update performance scores
+        self._sum_loss += (-self.learner.get_sum_loss())
+        self._eval_count += len(data_Y)
+        self.resource_used += resource
+        
+    def _get_learner_complexity(self):
+        # returns the complexity of the configured learner
+        # e.g if the input config is the feature space
+        # TODO: need to specify the complexity
+        # complexity = len(self.config)
+        complexity = 1
+        return complexity
+    
+    def get_avg_loss(self):
+        return self._sum_loss/self._eval_count
+
+    def _get_loss_cb(self):
+        return ConfiguredLearner.const*np.sqrt(self._get_learner_complexity
+            )/np.sqrt(self._eval_count)
+
+    def get_loss_ub(self):
+        return self.get_avg_loss() + self._get_loss_cb()
+    
+    def get_loss_lb(self):    
+        return self.get_avg_loss() - self._get_loss_cb()
+
+
 class FM_Set_Generator:
     """This is the class which specifies how to generate new feature maps 
         Important functions
@@ -116,15 +195,15 @@ class Environment:
 
     def __init__(self, iter_num, parameter=None):
         self.Y = None 
-        # self.raw_ns = ['a', 'b', 'c', 'd', 'e']
-        # #key is namespace id, and value is the dim of the namespace
-        # self.raw_ns_dic = {'a':3, 'b':3, 'c':3, 'd':3, 'e':3}
-        # self.ground_truth_ns = ['a', 'b', 'c', 'd', 'e' 'ab', 'ac', 'cd']
-
-        self.raw_ns = ['a', 'b',]
+        self.raw_ns = ['a', 'b', 'c', 'd', 'e']
         #key is namespace id, and value is the dim of the namespace
-        self.raw_ns_dic = {'a':3, 'b':3,}
-        self.ground_truth_ns = ['a', 'b', 'ab',]
+        self.raw_ns_dic = {'a':3, 'b':3, 'c':3, 'd':3, 'e':3}
+        self.ground_truth_ns = ['a', 'b', 'c', 'd', 'e' 'ab', 'ac', 'cd']
+
+        # self.raw_ns = ['a', 'b',]
+        # #key is namespace id, and value is the dim of the namespace
+        # self.raw_ns_dic = {'a':3, 'b':3,}
+        # self.ground_truth_ns = ['a', 'b', 'ab',]
         self.generate_raw_X(iter_num)
         self.generate_parameter()
         self.generate_reward(self.vw_x_dic_list)
@@ -194,45 +273,45 @@ class Environment:
         # "1 | price:.18 sqft:.15 age:.35 1976",
         # "0 | price:.53 sqft:.32 age:.87 1924",]
 
-#TODO: custromized wrapper around vw learner
-class Learner(pyvw.vw):
-    """ This is a custromized wrapper around vw learner.
-        Comparing to pyvw.vw, it has additional information including
-        - id
-        - cb: the confidence bound of the learner average loss
-        - loss_ub: the upper bound of the loss
-        - loss_lb: the lower bound of the loss
-        - cost: accumulated cost consumed
-        - feature_map: feature map used, which is a list of namespaces and their interactions
-    """
-    C = 0.05 #constant parameter used when constructing cb
-    def __init__(self, feature_map, feature_map_id, interactions, **basic_vw_args):
-        self.feature_map=feature_map
-        self.id = feature_map_id
-        self.loss_avg=0.0
-        self.cb=0.0
-        self.loss_ub= self.loss_avg + self.cb #upper bound of the loss
-        self.loss_lb= self.loss_avg - self.cb #lower bound of the loss
-        self.use_count=0.0
-        self.fm_complexity=len(self.feature_map)
-        self.C = Learner.C
-        self.cost = 0
-        self.loss_lower = 0.0
-        self.loss_upper = 1.0
-        super().__init__(q=interactions, **basic_vw_args)
+# #TODO: custromized wrapper around vw learner
+# class Learner(pyvw.vw):
+#     """ This is a custromized wrapper around vw learner.
+#         Comparing to pyvw.vw, it has additional information including
+#         - id
+#         - cb: the confidence bound of the learner average loss
+#         - loss_ub: the upper bound of the loss
+#         - loss_lb: the lower bound of the loss
+#         - cost: accumulated cost consumed
+#         - feature_map: feature map used, which is a list of namespaces and their interactions
+#     """
+#     C = 0.05 #constant parameter used when constructing cb
+#     def __init__(self, feature_map, feature_map_id, interactions, **basic_vw_args):
+#         self.feature_map=feature_map
+#         self.id = feature_map_id
+#         self.loss_avg=0.0
+#         self.cb=0.0
+#         self.loss_ub= self.loss_avg + self.cb #upper bound of the loss
+#         self.loss_lb= self.loss_avg - self.cb #lower bound of the loss
+#         self.use_count=0.0
+#         self.fm_complexity=len(self.feature_map)
+#         self.C = Learner.C
+#         self.cost = 0
+#         self.loss_lower = 0.0
+#         self.loss_upper = 1.0
+#         super().__init__(q=interactions, **basic_vw_args)
     
-    def learn(self, x, y, loss):
-        self.loss_avg = (self.loss_avg*self.use_count + loss
-                        )/(self.use_count+1.0)
-        # print(self.loss_avg, self.loss_func(y,y_pred) )
-        self.use_count+=1.0
-        self.cb=self.C*np.sqrt(self.fm_complexity)/np.sqrt(self.use_count)
-        self.loss_ub= self.loss_avg + self.cb #upper bound of the loss
-        self.loss_lb= max(self.loss_avg - self.cb, self.loss_lower)  #lower bound of the loss
-        #TODO: maybe add epoch to avoid updating every singe observation
-        # currently adding 1 unit of cost each update
-        self.cost +=1 
-        super().learn(x)
+#     def learn(self, x, y, loss):
+#         self.loss_avg = (self.loss_avg*self.use_count + loss
+#                         )/(self.use_count+1.0)
+#         # print(self.loss_avg, self.loss_func(y,y_pred) )
+#         self.use_count+=1.0
+#         self.cb=self.C*np.sqrt(self.fm_complexity)/np.sqrt(self.use_count)
+#         self.loss_ub= self.loss_avg + self.cb #upper bound of the loss
+#         self.loss_lb= max(self.loss_avg - self.cb, self.loss_lower)  #lower bound of the loss
+#         #TODO: maybe add epoch to avoid updating every singe observation
+#         # currently adding 1 unit of cost each update
+#         self.cost +=1 
+#         super().learn(x)
 
 class AutoOnlineLearner:
     """The AutoOnlineLearner object is auto online learning object.
