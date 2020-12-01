@@ -1,3 +1,6 @@
 [submodule "rapidjson"]
 	path = rapidjson
 	url = https://github.com/Tencent/rapidjson.git
+[submodule "online_automl_exp/AML"]
+	path = online_automl_exp/AML
+	url = https://github.com/sonichi/AML.git
