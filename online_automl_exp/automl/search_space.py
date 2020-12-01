@@ -66,7 +66,7 @@ class FM_Set_Generator:
         else: return ranked_feature_maps
 
 
-from blendsearch import Problem
+from AML.blendsearch import Problem
 from sklearn.preprocessing import PolynomialFeatures
 import itertools
 
@@ -88,14 +88,14 @@ class FSSProblem(Problem):
         space['fs'] = ConfigSearchInfo(name = 'fs', type = str, lower = 3, 
                 init = None, upper = None, log=False, choices = poly_fs_list ) 
         d = len(input_fs)
-        interaction_num = d choose order
+        # interaction_num = d choose order
         K = d*(d-1)
 
         for i in range(K):
             space[i] = ConfigSearchInfo(name = 'fs', type = str, lower = 3, 
                 init = None, upper = None, log=False, choices = poly_fs_list ) 
 
-        combination  2^{all_inter}
+        # combination  2^{all_inter}
         return space
     
     def compute_with_config(self):
