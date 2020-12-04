@@ -4,3 +4,6 @@
 [submodule "online_automl_exp/AML"]
 	path = online_automl_exp/AML
 	url = https://github.com/sonichi/AML.git
+[submodule "online_automl/AML"]
+	path = online_automl/AML
+	url = https://github.com/sonichi/AML.git
