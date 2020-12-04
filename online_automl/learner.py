@@ -10,95 +10,49 @@ import pandas as pd
 from ray import tune
 import math
 from functools import partial, partialmethod
+from searcher import FeatureSearcher
+from typing import Dict, Optional, List, Tuple
 
-def trainable_vw(learner_class, fixed_hp_config, data_buffer, hp_config):
-    print(hp_config)
-    vw_learner = learner_class(**hp_config, **fixed_hp_config)
-    data_sample_count = 0
-    total_resource_consumed = 0
-    const = 0.1
-    # while True:
-    for i in range(2):
-        data = data_buffer.feed()
-        print('data', data)
-        if data:
-            vw_learner.learn(data[0])
-            data_sample_count += len(data)
-            #TODO: where to get c
-            c = 1.0
-            resource_consumed = len(data)*c
-            loss_sum = vw_learner.get_sum_loss()
+# class TrainedVW:
 
-            loss_avg = loss_sum/float(data_sample_count)
-            cb = const*math.sqrt(1.0/data_sample_count) 
-            total_resource_consumed += resource_consumed
+#     def __init__(self, config, model):
+#         self.config = config
+#         self.id = config2id(config)
+#         self.model = model
+#         self._data_sample_count = 0
+#         self._total_resource_consumed = 0
+#         self._const = 0.1
+    
+#     def learn(self):
+#         self.model.learn(data)
+#         self.data_sample_count += len(data)
+        
+#         self.loss_sum = self.model.get_sum_loss
+#         #TODO: where to get c
+#         resource_consumed = 1.0
+#         self.total_resource_consumed += resource_consumed
 
-            result = {
-            'total_resource_consumed': total_resource_consumed,
-            'data_sample_count': data_sample_count,
-            'loss_sum': loss_sum,
-            'loss_avg': loss_avg, 
-            'cb': cb,
-            'loss_ucb': loss_avg + cb, 
-            'loss_lcb': loss_avg - cb,
-            'trained_model': vw_learner,
-            }
-            tune.report(**result)
+#         loss_avg = loss_sum/float(data_sample_count)
+#         cb = const*math.sqrt(1.0/data_sample_count) 
+       
+#         result = {
+#         'config': config,
+#         'total_resource_consumed': self.total_resource_consumed,
+#         'data_sample_count': self._data_sample_count,
+#         'loss_sum': loss_sum,
+#         'loss_avg': loss_avg, 
+#         'cb': cb,
+#         'loss_ucb': loss_avg + cb, 
+#         'loss_lcb': loss_avg - cb,
+#         }
+#         return result
 
-
-def trainable_vw_test(AutoML_instance):
-    vw_learner = AutoML_instance._learner_class(**AutoML_instance._hp_config, **AutoML_instance._fixed_hp_config)
-    data_sample_count = 0
-    total_resource_consumed = 0
-    const = 0.1
-    # while True:
-    for i in range(2):
-        data = AutoML_instance.data_buffer.feed()
-        print('data', data)
-        if data:
-            vw_learner.learn(data[0])
-            data_sample_count += len(data)
-            #TODO: where to get c
-            c = 1.0
-            resource_consumed = len(data)*c
-            loss_sum = vw_learner.get_sum_loss()
-
-            loss_avg = loss_sum/float(data_sample_count)
-            cb = const*math.sqrt(1.0/data_sample_count) 
-            total_resource_consumed += resource_consumed
-
-            result = {
-            'total_resource_consumed': total_resource_consumed,
-            'data_sample_count': data_sample_count,
-            'loss_sum': loss_sum,
-            'loss_avg': loss_avg, 
-            'cb': cb,
-            'loss_ucb': loss_avg + cb, 
-            'loss_lcb': loss_avg - cb,
-            # 'trained_model': vw_learner,
-            }
-            tune.report(**result)
-class DataBuffer:
-
-    def __init__(self, visit_limit=1):
-        self.data_set = []
-        self._counter = 0
-        self._visit_limit = visit_limit
-
-    def collect(self, new_data):
-        self.data_set += new_data
-
-    def feed(self, num = None):
-        self._counter +=1
-        data = self.data_set if not num else self.data_set[-num:]
-        # if reach the limit for the counter, cleanup the list
-        print('counter', self._counter)
-        if self._counter > self._visit_limit:
-            self.data_set = [] if not num else self.data_set.pop(num)
-            self._counter = 0
-        return data
-
+#     @staticmethod
+#     def config2id(config):
+#         config_id = tuple(config)
+#         return config_id
 #TODO: what is the name of the algorithm: how to reflect the feature generation part?
+
 class AutoVW:
     #TODO: do we need to rewrite every function of vw?
     """The AutoOnlineLearner object is auto online learning object.
@@ -112,15 +66,26 @@ class AutoVW:
     learner_class = pyvw.vw
     def __init__(self, min_resource_budget: int, policy_budget: int, 
         hp2tune_init_config: dict, fixed_hp_config: dict, **kwargs):
+        from AML.blendsearch.trial_runner import OnlineTrialRunner
         from ray.tune.schedulers import FIFOScheduler, ASHAScheduler
-        # from AML.scheduler.online_scheduler import OnlineFeatureSelectionScheduler 
+        from AML.blendsearch.scheduler.online_scheduler import OnlineDoublingScheduler 
+        from AML.blendsearch.searcher.online_searcher import NaiveSearcher, FeatureInteractionSearcher 
         self._min_resource_budget = min_resource_budget
         self._policy_budget = policy_budget
         self._fixed_hp_config = fixed_hp_config
         self._hp2tune_init_config = hp2tune_init_config
         self._learner_class = AutoVW.learner_class
-        self._data_buffer = DataBuffer(visit_limit = self._policy_budget)
-
+        self._init_result = {
+        'resource_used': 0,
+        'resource_budget': self._min_resource_budget,
+        'data_sample_count': 0,
+        'loss_sum': 0,
+        'loss_avg': 0, 
+        'cb': 100,
+        'loss_ucb': 0+100, 
+        'loss_lcb': 0-100,
+        }
+        
         self._learner_dic = {} 
         # the incumbent_learner is the incumbent vw when the AutoVW is called
         # the incumbent_learner is udpated everytime the learn function is called.
@@ -128,69 +93,68 @@ class AutoVW:
         self._incumbent_learner = AutoVW.learner_class(
             **self._fixed_hp_config, **self._hp2tune_init_config)
         # config_id = self._get_config_id(self._hp2tune_init_config['q'])
-        # self._learner_dic[config_id] = self._incumbent_learner  
-        self._scheduler = ASHAScheduler(
-            time_attr='training_sample_size',
+        self._learner_dic = {}
+
+        self._searcher = NaiveSearcher(
             metric='loss_ucb',
             mode='min',
-            #TODO: how to specify the max resource in ASHA
-            max_t=self._min_resource_budget*(2**6), 
-            grace_period= self._min_resource_budget,
-            reduction_factor=2,
-            brackets=1)
-        #TODO: do I need a scheduler or searcher?
-        self._searcher = None
-        # self._scheduler = OnlineFeatureSelectionScheduler(
-        #    time_attr='training_sample_size',
-        #     metric='loss_ucb',
-        #     mode='min',
-        #     min_t=self._min_resource_budget, 
-        #     reduction_factor=2,
-        #     init_config = hp2tune_init_config,
-        #     generate_new_func = self._generate_new_sapce)
+            init_config = hp2tune_init_config,
+            init_result = self._init_result,
+            )
+        self._scheduler = OnlineDoublingScheduler(
+                resource_used_attr = "resource_used",
+                resource_budget_attr = "resource_budget",
+                doubling_factor = 2
+                )
+        self._trial_runner = OnlineTrialRunner(
+            search_alg=self._searcher,
+            scheduler=self._scheduler,
+            running_budget=self._policy_budget
+            )
+    @property  
+    def incumbent_vw(self):
+        return self._incumbent_learner
+
+    @property  
+    def init_result(self):
+        return self._init_result
 
     @staticmethod
     def _get_config_id(config_value):
         return tuple(config_value)
 
-    def _trainable_vw(self, config):
-        print(config)
-        config_id = self._get_config_id(self._hp2tune_init_config['q'])
+    def _train_vw(self, old_result, config_id, config, data):
         if config_id not in self._learner_dic:
-            self._learner_dic[config_id] = self._learner_class(config, **self._fixed_hp_config) 
+            print(config_id, config)
+            assert len(config) == 1, 'only tunning 1 hp'
+            self._learner_dic[config_id] = self._learner_class(**config, **self._fixed_hp_config) 
         # vw_learner = pyvw.vw(config, **self._fixed_hp_config)
-        data_sample_count = 0
-        total_resource_consumed = 0
+        data_sample_count = old_result['data_sample_count']
+        total_resource_consumed = old_result['resource_used']
         const = 0.1
-        while True:
-            # data = self._data_buffer.feed()
-            data = [(1,3), (3,4)]
-            if data:
-                self._learner_dic[config_id].learn(data)
-                data_sample_count += len(data)
-                #TODO: where to get c
-                c = 1.0
-                resource_consumed = len(data)*c
-                loss_sum = self._learner_dic[config_id].get_sum_loss
+        self._learner_dic[config_id].learn(data)
+        data_sample_count += len(data)
+        #TODO: where to get c
+        c = 1.0
+        resource_consumed = len(data)*c
+        loss_sum = self._learner_dic[config_id].get_sum_loss()
 
-                loss_avg = loss_sum/float(data_sample_count)
-                cb = const*math.sqrt(1.0/data_sample_count) 
-                total_resource_consumed += resource_consumed
-
-                result = {
-                'total_resource_consumed': total_resource_consumed,
-                'data_sample_count': data_sample_count,
-                'loss_sum': loss_sum,
-                'loss_avg': loss_avg, 
-                'cb': cb,
-                'loss_ucb': loss_avg + cb, 
-                'loss_lcb': loss_avg - cb,
-                }
-                # self.learners[config_id] = vw_learner
-            else:
-                result = None
-            tune.report(**result)
-    
+        loss_avg = loss_sum/float(data_sample_count)
+        cb = const*math.sqrt(1.0/data_sample_count) 
+        total_resource_consumed += resource_consumed
+        # current_resource_budget = trial 
+        result = {
+        'config': config,
+        'resource_used': total_resource_consumed,
+        'data_sample_count': data_sample_count,
+        'loss_sum': loss_sum,
+        'loss_avg': loss_avg, 
+        'cb': cb,
+        'loss_ucb': loss_avg + cb, 
+        'loss_lcb': loss_avg - cb,
+        }
+        return result
+                  
     def predict(self, x):
         """ Predict on the input example
         """
@@ -205,60 +169,19 @@ class AutoVW:
             y (float): label of the example (optional) 
             #TODO: label can be obtained from x
         """
-        #TODO: is this the right way to setup the data buffer?
-        #TODO: do we need to decouple x and y as sometimes x and y come at different time
-        # self._data_buffer.collect([(x,y)])
-        self._data_buffer.collect([x])
-        full_search_sapce = self._generate_full_space(list(self._hp2tune_init_config['q']))
-        search_space = self._searcher.search_space if (
-            self._searcher and self._searcher.search_space) else full_search_sapce
-        print(tuple(search_space))
-        tune_search_space ={'q': tune.choice(search_space)}
-        tune_search_space ={'q': tune.choice(['ab', 'ac'])}
-        # tune.utils.diagnose_serialization(self._trainable_vw)
-        # tune.utils.diagnose_serialization(partial(AutoVW._trainable_vw, self))
-        # tune.utils.diagnose_serialization(partial(trainable_vw_test, self))
-        # tune.utils.diagnose_serialization(partial(trainable_vw, AutoVW.learner_class,
-        #     self._fixed_hp_config, self._data_buffer, self._incumbent_learner))
-       
-        analysis = tune.run(
-            partial(trainable_vw, AutoVW.learner_class, self._fixed_hp_config, self._data_buffer),
-            # self._trainable_vw,
-            config = tune_search_space,
-            search_alg = self._searcher,
-            scheduler = self._scheduler,
-            # verbose=0, local_dir='logs/ray_results'
-            )
-        #TODO: check the API for finding the best trial
-        # self._incumbent_learner = analysis.get_best_trial(metric ='loss_ucb').last_result['config_id']
-    #TODO: need to wrap all the function calls for AutoVW
-    
+        running_trials = self._trial_runner.get_running_trials()
+        for trial in running_trials:
+            result = self._train_vw(trial.result, trial.trial_id, trial.config, x)
+            self._trial_runner.process_trial(result, trial)
+        best_trial = self._trial_runner.get_best_running_trial(metric ='loss_ucb')
+        self._incumbent_learner = self._learner_dic[best_trial.trial_id]
     def get_sum_loss(self):
         return self._incumbent_learner.get_sum_loss()
 
     def finished(self):
         return self._incumbent_learner.finished()
     
-    @property  
-    def incumbent_vw(self):
-        return self._incumbent_learner
-
-    @staticmethod
-    def _generate_new_sapce(champion_config, order=2):
-        assert len(champion_config) == 1
-        hp_name = champion_config.keys()[0]
-        seed = champion_config[hp_name]
-        #TODO: construct the feature map set generators
-        import itertools
-        return list(itertools.product(* [seed, seed]))
     
-    @staticmethod
-    def _generate_full_space(org_feature_list, max_poly_degree = 4):
-        # feature_list = config['q']
-        if not max_poly_degree: max_poly_degree = len(org_feature_list)
-        max_poly_comb = list(org_feature_list)
-        for i in range(2, max_poly_degree):
-            max_poly_comb = list(itertools.product(* [max_poly_comb, org_feature_list]))
-        return max_poly_comb
+
 
     
