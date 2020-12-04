@@ -4,7 +4,6 @@ import argparse
 import itertools
 import pandas as pd
 from sklearn.metrics import mean_squared_error
-from util import squared_error, plot_obj, fm2inter_arg
 from vowpalwabbit import pyvw
 import pylibvw
 
