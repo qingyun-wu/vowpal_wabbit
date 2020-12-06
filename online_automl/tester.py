@@ -39,24 +39,34 @@ def online_learning_loop(iter_num, vw_example, vw_alg, name = ''):
             It is returned for the convenience of visualization.
     """
     cumulative_loss_list = []
+    cum_loss = 0
     for i in range(iter_num):
         # y =  Y[i] #TODO: do we need y? vw_example already include x and y
         if 'auto' in name:
             # loss = vw_x.get_loss()
-            print(vw_example[i])
+            # print( 'pre', vw_alg.incumbent_vw.get_sum_loss())
+            loss_pre = vw_alg.incumbent_vw.get_sum_loss()
+            # print(vw_example[i])
             vw_x = vw_example[i]
             #TODO: check how to convert to vw example
             # vw_x = pyvw.example(vw_alg.incumbent_vw(), vw_example[i])
             y_pred= vw_alg.incumbent_vw.predict(vw_x)  
             vw_alg.learn(vw_x) 
-            cumulative_loss_list.append(vw_alg.incumbent_vw.get_sum_loss())
+            loss = vw_alg.incumbent_vw.get_sum_loss() - loss_pre
+            print(loss)
+            if loss <0:
+                print('NEGATIVE loss', loss, vw_alg.incumbent_vw.get_sum_loss(), loss_pre)
+            else:
+                cum_loss += loss
+            cumulative_loss_list.append(cum_loss)
+            # cumulative_loss_list.append(vw_alg.incumbent_vw.get_sum_loss())
         else:
             vw_x = pyvw.example(vw_alg, vw_example[i])
             y_pred= vw_alg.predict(vw_x)  
             vw_alg.learn(vw_x) 
-            print()
             cumulative_loss_list.append(vw_alg.get_sum_loss())
         # alg.finish_example(vw_x)
+    print(cumulative_loss_list)
     return cumulative_loss_list
 
 
@@ -66,7 +76,7 @@ if __name__=='__main__':
     parser.add_argument('-i', '--iter_num', metavar='iter_num', type = int, 
         default=1500, help="total iteration number")
     parser.add_argument('-b', '--policy_budget', metavar='policy_budget', 
-    type = float, default= 1, help="budget for the policy that can be evaluated")
+    type = float, default= 3, help="budget for the policy that can be evaluated")
     parser.add_argument('-c', '--cost_budget', metavar='cost_budget', 
     type = float, default= 100, help="budget for the computation resources that can be evaluated")
     args = parser.parse_args()
@@ -83,7 +93,7 @@ if __name__=='__main__':
     #instantiate several vw learners (as baselines) and an AutoOnlineLearner
     alg_dic = {}
     # alg_dic['oracle'] = pyvw.vw(q=['ab', 'ac', 'cd'], **fixed_hp_config)
-    alg_dic['naive'] = pyvw.vw(**fixed_hp_config)
+    # alg_dic['naive'] = pyvw.vw(**fixed_hp_config)
     #specify a feature map generator
     # alg_dic['auto'] = AutoVW(fm_generator = fm_generator, 
     #     cost_budget = args.cost_budget, policy_budget = args.policy_budget, **fixed_hp_config)

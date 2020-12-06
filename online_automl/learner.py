@@ -10,48 +10,7 @@ import pandas as pd
 from ray import tune
 import math
 from functools import partial, partialmethod
-from searcher import FeatureSearcher
 from typing import Dict, Optional, List, Tuple
-
-# class TrainedVW:
-
-#     def __init__(self, config, model):
-#         self.config = config
-#         self.id = config2id(config)
-#         self.model = model
-#         self._data_sample_count = 0
-#         self._total_resource_consumed = 0
-#         self._const = 0.1
-    
-#     def learn(self):
-#         self.model.learn(data)
-#         self.data_sample_count += len(data)
-        
-#         self.loss_sum = self.model.get_sum_loss
-#         #TODO: where to get c
-#         resource_consumed = 1.0
-#         self.total_resource_consumed += resource_consumed
-
-#         loss_avg = loss_sum/float(data_sample_count)
-#         cb = const*math.sqrt(1.0/data_sample_count) 
-       
-#         result = {
-#         'config': config,
-#         'total_resource_consumed': self.total_resource_consumed,
-#         'data_sample_count': self._data_sample_count,
-#         'loss_sum': loss_sum,
-#         'loss_avg': loss_avg, 
-#         'cb': cb,
-#         'loss_ucb': loss_avg + cb, 
-#         'loss_lcb': loss_avg - cb,
-#         }
-#         return result
-
-#     @staticmethod
-#     def config2id(config):
-#         config_id = tuple(config)
-#         return config_id
-#TODO: what is the name of the algorithm: how to reflect the feature generation part?
 
 class AutoVW:
     #TODO: do we need to rewrite every function of vw?
@@ -64,10 +23,11 @@ class AutoVW:
         hp2tune_init_config (dict): the init config for the hyperparameters to tune
     """
     learner_class = pyvw.vw
+    MAX_NUM = 2**16
     def __init__(self, min_resource_budget: int, policy_budget: int, 
         hp2tune_init_config: dict, fixed_hp_config: dict, **kwargs):
         from AML.blendsearch.trial_runner import OnlineTrialRunner
-        from ray.tune.schedulers import FIFOScheduler, ASHAScheduler
+        from ray.tune.schedulers import FIFOScheduler, ASHAScheduler, HyperBandScheduler
         from AML.blendsearch.scheduler.online_scheduler import OnlineDoublingScheduler 
         from AML.blendsearch.searcher.online_searcher import NaiveSearcher, FeatureInteractionSearcher 
         self._min_resource_budget = min_resource_budget
@@ -106,10 +66,28 @@ class AutoVW:
                 resource_budget_attr = "resource_budget",
                 doubling_factor = 2
                 )
+        asha_scheduler = ASHAScheduler(
+            time_attr='resource_used',
+            metric='loss_ucb',
+            mode='min',
+            max_t= AutoVW.MAX_NUM,
+            grace_period=10,
+            reduction_factor=2,
+            brackets=1)
+        self._scheduler = HyperBandScheduler(
+            time_attr='resource_used',
+            reward_attr='loss_ucb',
+            metric='loss_ucb',
+            mode='min',
+            max_t= AutoVW.MAX_NUM,
+            reduction_factor=2,
+            )
         self._trial_runner = OnlineTrialRunner(
             search_alg=self._searcher,
-            scheduler=self._scheduler,
-            running_budget=self._policy_budget
+            scheduler= self._scheduler,
+            running_budget=self._policy_budget,
+            resource_used_attr="resource_used",
+            resource_budget_attr="resource_budget",
             )
     @property  
     def incumbent_vw(self):
@@ -169,12 +147,13 @@ class AutoVW:
             y (float): label of the example (optional) 
             #TODO: label can be obtained from x
         """
-        running_trials = self._trial_runner.get_running_trials()
-        for trial in running_trials:
+        scheduled_trials = self._trial_runner.schedule_trials()
+        for trial in scheduled_trials:
             result = self._train_vw(trial.result, trial.trial_id, trial.config, x)
             self._trial_runner.process_trial(result, trial)
         best_trial = self._trial_runner.get_best_running_trial(metric ='loss_ucb')
         self._incumbent_learner = self._learner_dic[best_trial.trial_id]
+    
     def get_sum_loss(self):
         return self._incumbent_learner.get_sum_loss()
 
