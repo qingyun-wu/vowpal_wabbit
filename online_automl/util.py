@@ -332,7 +332,17 @@ def trainable_vw(learner_class, fixed_hp_config, data_buffer, hp_config):
         tune.report(**result)
 
 
-
+def strip_noninteractive_feature(config):
+    import copy
+    new_config = copy.deepcopy(config)
+    for k,v in new_config.items():
+        if k == 'q':
+            to_remove = []
+            for inter in v: 
+                if len(inter) ==1: to_remove.append(inter)
+            for inter in to_remove: v.remove(inter) 
+        new_config[k] = v
+    return new_config
 
 # -*- coding: UTF-8 -*-
 
@@ -387,5 +397,5 @@ def csv_to_vw(loc_csv, loc_output, train=True):
 
   print("\n %s Task execution time:\n\t%s"%(e, str(datetime.now() - start)))
 
-  #csv_to_vw("d:\\Downloads\\train\\train.csv", "c:\\click.train.vw",train=True)
+#csv_to_vw("d:\\Downloads\\train\\train.csv", "c:\\click.train.vw",train=True)
 #csv_to_vw("d:\\Downloads\\test\\test.csv", "d:\\click.test.vw",train=False)
