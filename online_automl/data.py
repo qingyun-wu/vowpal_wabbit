@@ -33,7 +33,7 @@ class DataSimulator:
             vw_x_dic = {}
             count = 0
             for raw_ns, ns_dim in self.raw_ns_dic.items():
-                feature = np.random.uniform(-1,1,ns_dim)
+                feature = np.random.uniform(0,1,ns_dim)
                 # feature = feature/np.linalg.norm(feature)
                 vw_x_dic[raw_ns] = feature
                 count +=1
@@ -69,13 +69,13 @@ class DataSimulator:
                 if ns in self.vw_parameter_dic:
                     # print(ns, fs, self.vw_parameter_dic[ns])
                     reward_fs += np.dot(vw_x_dic[ns], self.vw_parameter_dic[ns])
-            noise = np.random.normal(0, 0.001, 1)[0]
-            r = reward_fs + noise
-            log_r = 1/(1 + np.exp(-r))
-            if log_r >0.5:
-                label = 1
-            else: label = 0
-            y_list.append(label)
+            noise = np.random.normal(0, 0.1, 1)[0]
+            r = reward_fs  + noise
+            # log_r = 1/(1 + np.exp(-r))
+            # if log_r >0.5:
+            #     label = 1
+            # else: label = 0
+            y_list.append(r)
         self.Y = y_list
 
     def _construct_vw_example(self):
