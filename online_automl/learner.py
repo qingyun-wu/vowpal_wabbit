@@ -18,15 +18,39 @@ from sklearn.metrics import mean_squared_error
 class TrainableVWTrial:
 
     
-    """TODO: better organize the results
+    """ Class for trainable VW
+        Args:
+            trial_id (str): the id of the trial
+            feature_set (set): the set of features (more precisely, name spaces in vw) to use in 
+                building a vw model
+            fixed_config (dict): the dictionary of fixed configurations 
+            init_result (dict): init result
+        
+        TODO: better organize the results
         1. training related results (need to be updated in the trainable class)
         2. result about resources allocation (need to be updated externally)
+
+        Other info: 
+            - Info about name spaces in vw: 
+            https://github.com/VowpalWabbit/vowpal_wabbit/wiki/Namespaces
+            - Command-line options related to name-spaces:
+                Option	Meaning
+                --keep c	Keep a name-space staring with the character c
+                --ignore c	Ignore a name-space starting with the character c
+                --redefine a:=b	redefine namespace starting with b as starting with a
+                --quadratic ab	Cross namespaces starting with a & b on the fly to generate 2-way interacting features
+                --cubic abc	Cross namespaces starting with a, b, & c on the fly to generate 3-way interacting features
     """
     model_class = pyvw.vw
     cost_unit = 1.0
     const = 1.0
-    quartic_config_key = 'q'
-    cubic_config_key = 'c'
+    # quartic_config_key = 'q'
+    # cubic_config_key = 'cubic'
+    interactions_config_key = 'interactions'
+    # the following ones are not used for now
+    ignore_config_key = 'ignore'
+    keep_config_key = 'keep'
+    redefine_config_key = 'redefine'
     def __init__(self, trial_id, feature_set, fixed_config, init_result): 
         """ need to provide init_result
             #TODO: the config should be a set instead of a list
@@ -38,7 +62,7 @@ class TrainableVWTrial:
         self.trained_model = TrainableVWTrial.model_class(
             **self._vw_fs_config, **self._fixed_config )
         # TODO: how to get the dim of parameters
-        self._dim = len(self._feature_set)
+        self._dim = len(self._feature_set)*3
         self._resouce_used_attr = 'resource_used'
         self._resource_budget_attr = 'resource_budget'
         self._result = {'config': self._feature_set,}
@@ -68,7 +92,7 @@ class TrainableVWTrial:
         # loss_sum = loss + old_result['loss_sum']
         # print('loss sum', loss_sum)
         self._result['loss_avg'] =  self._result['loss_sum']/self._result['data_sample_count']
-        self._result['cb'] =  TrainableVWTrial.const*math.sqrt(np.log(self._dim)/self._result['data_sample_count']) 
+        self._result['cb'] =  TrainableVWTrial.const*math.sqrt(self._dim/self._result['data_sample_count']) 
         self._result['loss_ucb'] = self._result['loss_avg'] + self._result['cb']
         self._result['loss_lcb'] = self._result['loss_avg'] - self._result['cb']
         
@@ -85,13 +109,9 @@ class TrainableVWTrial:
     @classmethod
     def _feature_set_to_vw_fs_config(cls, feature_set):
         vw_fs_config = {}
-        for c in feature_set:      
-            if len(c) == 2: hp_name = cls.quartic_config_key
-            elif len(c) == 3: hp_name = cls.cubic_config_key
-            else:
-                hp_name = None
-                print('NotImplementedError', c)
-                # NotImplementedError
+        for c in feature_set: 
+            if len(c) == 1: hp_name = None 
+            else: hp_name = cls.interactions_config_key
             if hp_name:
                 if hp_name not in vw_fs_config:
                     vw_fs_config[hp_name] = []
@@ -117,7 +137,7 @@ class AutoVW:
         from AML.blendsearch.trial_runner import OnlineTrialRunner
         from ray.tune.schedulers import FIFOScheduler, ASHAScheduler, HyperBandScheduler
         from AML.blendsearch.scheduler.online_scheduler import OnlineDoublingScheduler 
-        from AML.blendsearch.searcher.online_searcher import NaiveSearcher, FeatureInteractionSearcher 
+        from AML.blendsearch.searcher.online_searcher import BaseFeatureSearcher, FeatureInteractionSearcher 
         self._min_resource_budget = min_resource_budget
         self._policy_budget = policy_budget
         self._fixed_hp_config = fixed_hp_config
@@ -125,15 +145,17 @@ class AutoVW:
         self._learner_class = AutoVW.learner_class
         self._best_trial = None 
         self._all_trials = {} # trial_id -> trial
+        self._metric = 'loss_ucb'
+        self._mode = 'min'
         self._init_result = {
         'resource_used': 0,
         'resource_budget': self._min_resource_budget,
         'data_sample_count': 0,
-        'loss_sum': 0,
-        'loss_avg': 0, 
-        'cb': 100,
-        'loss_ucb': 0+100, 
-        'loss_lcb': 0-100,
+        'loss_sum': np.inf,
+        'loss_avg': np.inf, 
+        'cb': 1.0,
+        'loss_ucb': np.inf, 
+        'loss_lcb': np.inf,
         }
         self._loss_func = self._get_loss_func_from_config(self._fixed_hp_config)
         # the incumbent_learner is the incumbent vw when the AutoVW is called
@@ -143,12 +165,12 @@ class AutoVW:
         self._y_pred = None 
         self._sum_loss = 0.0
         self._learner_dic = {}
-        self._searcher = NaiveSearcher(
-            metric='loss_ucb',
-            mode='min',
-            init_feature_set = init_feature_set,
-            init_result = self._init_result,
-            )
+        # self._searcher = NaiveSearcher(
+        #     metric='loss_ucb',
+        #     mode= self._mode ,
+        #     init_feature_set = init_feature_set,
+        #     init_result = self._init_result,
+        #     )
 
         self._searcher = FeatureInteractionSearcher(
             metric='loss_ucb',
@@ -156,8 +178,7 @@ class AutoVW:
             init_feature_set = init_feature_set,
             init_result = self._init_result,
             )    
-        
-        
+    
         online_scheduler = OnlineDoublingScheduler(
                 resource_used_attr = "resource_used",
                 resource_budget_attr = "resource_budget",
@@ -175,7 +196,7 @@ class AutoVW:
         hyperband_scheduler = HyperBandScheduler(
             time_attr='resource_used',
             reward_attr='loss_avg',
-            metric='loss_avg',
+            metric='loss_ucb',
             mode='min',
             max_t= 10000,#AutoVW.MAX_NUM,
             reduction_factor=2,
@@ -191,6 +212,9 @@ class AutoVW:
             running_budget=self._policy_budget,
             resource_used_attr="resource_used",
             resource_budget_attr="resource_budget",
+            doubling_factor = 2,
+            metric = 'loss_lcb',
+            mode = 'min',
             )
     @property  
     def incumbent_vw(self):
@@ -223,7 +247,7 @@ class AutoVW:
         self._learner_dic[trial.trial_id].train_vw(data, y, trial.result)
         # update trial result
         trial.result = self._learner_dic[trial.trial_id].get_result() 
-        # print('===========', trial.config, trial.result)        
+           
     def predict(self, x):
         """ Predict on the input example
         """
@@ -243,7 +267,7 @@ class AutoVW:
         self._clean_up_old_models(scheduled_trials) 
         for trial in scheduled_trials:
             self._train_vw_trial(trial, x, y)
-        self._trial_runner.process_trial(scheduled_trials)
+        self._trial_runner.process_trials_result(scheduled_trials)
         self._best_trial = self._trial_runner.get_best_running_trial()
         self._incumbent_learner = self._learner_dic[self._best_trial.trial_id].trained_model
 

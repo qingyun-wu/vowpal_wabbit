@@ -7,3 +7,6 @@
 [submodule "online_automl/AML"]
 	path = online_automl/AML
 	url = https://github.com/sonichi/AML.git
+[submodule "online_automl/cb_bakeoff"]
+	path = online_automl/cb_bakeoff
+	url = https://github.com/albietz/cb_bakeoff.git
