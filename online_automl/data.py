@@ -10,8 +10,10 @@ import pylibvw
 from sklearn.preprocessing import PolynomialFeatures
 import itertools
 import logging
-
-VW_DS_DIR = './data/vwdatasets/'
+from config import VW_DS_DIR
+from config import OPENML_REGRESSION_LIST_inst_larger_than_5k, \
+    OPENML_REGRESSION_LIST_inst_larger_than_10k, OPENML_REGRESSION_LIST_inst_larger_than_100k
+    
 class DataSimulator:
 ##TODO: add description about the DataSimulator
 ##TODO: currently building the DataSimulator from simulation. 
