@@ -53,8 +53,8 @@ if __name__=='__main__':
         argument_list = [alias_time, alias_resource, alias_policy_num, alias_inter_order, alias_prob, additional_argument]
         line_part1 = '\n'+ 'screen -Sdm ' + alias_screen + ' ' + 'bash -c '
         line_part2 = '"' + 'python tester.py ' + ' '.join(argument_list) \
-                    + '>./stdout/out_' + alias_screen \
-                    + ' ' + '2>./stdout/err_' + alias_screen + '"'
+                    + '>./logs/stdout/out_' + alias_screen \
+                    + ' ' + '2>./logs/stdout/err_' + alias_screen + '"'
         if not no_redirect:
             line = line_part1 + line_part2 
         else:
