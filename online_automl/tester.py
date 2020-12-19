@@ -11,6 +11,7 @@ from learner import AutoVW
 from vowpalwabbit import pyvw
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error, mean_absolute_error
+from config import LOG_DIR, PLOT_DIR
 import logging
 
 logger = logging.getLogger(__name__)
@@ -116,7 +117,7 @@ if __name__=='__main__':
     parser.add_argument('-policy_budget', '--policy_budget', metavar='policy_budget', 
     type = int, default= 5, help="budget for the policy that can be evaluated")
     parser.add_argument('-min_resource', '--min_resource', metavar='cost_budget', 
-    type = float, default= 20, help="budget for the computation resources that can be evaluated")
+    type = float, default= 5, help="budget for the computation resources that can be evaluated")
     parser.add_argument('-dataset', '--dataset', metavar='dataset', 
     type = str, default= 'simulation', help="get dataset")
     parser.add_argument('-inter_order', '--inter_order', metavar='inter_order', 
@@ -125,7 +126,7 @@ if __name__=='__main__':
     args = parser.parse_args()
 
     exp_alias = str(args.dataset) + '_' + str(args.min_resource) #+ '_interOrder_' + str(args.inter_order)
-    log_file_name = './logs/' + exp_alias + '.log'
+    log_file_name = LOG_DIR + exp_alias + '.log'
     #set up the learning environment, which can generate the learning examples
     #currently from simulation (can also constructed from dataset)
     #TODO: --cbify
@@ -150,16 +151,22 @@ if __name__=='__main__':
     alg_dic['naive'] = pyvw.vw(**fixed_hp_config)
     #TODO: how to get loss? progressive validation
     auto_method_alias = 'auto_' + exp_alias
-    alg_dic[auto_method_alias + 'order_2'] = AutoVW(min_resource_budget = args.min_resource,#args.cost_budget, 
+    alg_dic[auto_method_alias + 'order_2_random'] = AutoVW(min_resource_budget = args.min_resource,#args.cost_budget, 
         policy_budget = args.policy_budget, 
         namespace_feature_dim = namespace_feature_dim, 
+        fixed_hp_config = fixed_hp_config,
         inter_order = 2,
-        fixed_hp_config = fixed_hp_config)
-    alg_dic[auto_method_alias + 'order_3'] = AutoVW(min_resource_budget = args.min_resource,#args.cost_budget, 
+        priority_policy = 'rank_res',
+        test_policy = 'lcb_ucb',
+        )
+    alg_dic[auto_method_alias + 'order_2_score'] = AutoVW(min_resource_budget = args.min_resource,#args.cost_budget, 
         policy_budget = args.policy_budget, 
         namespace_feature_dim = namespace_feature_dim, 
-        inter_order = 3,
-        fixed_hp_config = fixed_hp_config)
+        fixed_hp_config = fixed_hp_config,
+        inter_order = 2,
+        priority_policy = 'sample_priority',
+        test_policy = 'lcb_ucb',
+        )
     import matplotlib.pyplot as plt
     
     for alg_name, alg in alg_dic.items():
@@ -168,7 +175,7 @@ if __name__=='__main__':
         plot_obj(cumulative_loss_list, alias= alg_name)
     
     alias = 'loss_' + exp_alias
-    fig_name = './results/' + alias + '.pdf'
+    fig_name = PLOT_DIR + alias + '.pdf'
     plt.savefig(fig_name)
     
     
