@@ -100,7 +100,7 @@ def get_data(iter_num=None, data_source = 'simulation', vw_format=True):
     if 'simu' in data_source:
         data = DataSimulator(iter_num)
     else:
-        from data_openml import OpenML2VWData
+        from openml_data_helper import OpenML2VWData
         data_id = int(data_source)
         data = OpenML2VWData(data_id, 'regression') #218
     # oml_vw_data = oml_data.load_vw_dataset(1595, VW_DS_DIR, True)

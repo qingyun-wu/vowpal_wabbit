@@ -1,19 +1,14 @@
 
 
 # python gene_script.py  -i 10000 -min_resource 20 -policy_budget 5   -filename run_openml.sh
-# python gene_script.py  -i 10000 -min_resource 10 -policy_budget 5  -filename run_openml_10.sh
 # python gene_script.py  -i 10000 -min_resource 10 -policy_budget 5 -inter_order 2 -filename run_openml_10.sh
 import argparse
+from config import STDOUT_DIR
 
 if __name__=='__main__':
-    ###************************Datasets for ICLR21**************************************
-    ##====================xgb_cat/lgbm datasets (35 in total): =========================
+    # dataset_list = [189, 198, 215, 218, 227, 287, 344, 562, 572, 688, 1193, 1196, 1199, 1200, 1201, 1204, 1213, 1595, 'simulation']
     dataset_list = [189, 198, 215, 218, 227, 287, 344, 562, 572, 688, 1193, 1196, 1199, 1200, 1201, 1204, 1213, 1595, 'simulation']
-
-
-   
-    # dataset_list = ['guillermo', 'volkert', 'MiniBooNE', 'Jannis', 'mfeat', 'jungle', 'jasmine']
-   
+    dataset_list = [189, 215,  572, 1196, 1199, 1200, 1201, 1204,  'simulation']
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--iter', metavar='iter', type = int, 
         default=1000, help="iteration number")
@@ -22,7 +17,7 @@ if __name__=='__main__':
     parser.add_argument('-policy_budget', '--policy_budget', metavar='policy_budget', type = int, 
         default=5, help="policy_budget")
     parser.add_argument('-inter_order', '--inter_order', metavar='inter_order', type = int, 
-        default=3, help="inter_order")
+        default=2, help="inter_order")
     # parser.add_argument('-problem', '--problem', dest='problems', nargs='*', default=['simulation'])
     parser.add_argument('-datasets', '--dataset_list', dest='dataset_list', nargs='*' , 
         default= [], help="The dataset list")
@@ -53,8 +48,8 @@ if __name__=='__main__':
         argument_list = [alias_time, alias_resource, alias_policy_num, alias_inter_order, alias_prob, additional_argument]
         line_part1 = '\n'+ 'screen -Sdm ' + alias_screen + ' ' + 'bash -c '
         line_part2 = '"' + 'python tester.py ' + ' '.join(argument_list) \
-                    + '>./logs/stdout/out_' + alias_screen \
-                    + ' ' + '2>./logs/stdout/err_' + alias_screen + '"'
+                    + '>' + STDOUT_DIR + 'out_' + alias_screen \
+                    + ' ' + '2>' + STDOUT_DIR + 'err_' + alias_screen + '"'
         if not no_redirect:
             line = line_part1 + line_part2 
         else:

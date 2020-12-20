@@ -1,5 +1,8 @@
 
 VW_DS_DIR = './data/openml_vwdatasets/'
+LOG_DIR = './result/log/'
+STDOUT_DIR = './result/stdout/'
+PLOT_DIR = './result/plot/'
 RANDOM_SEED = 20201234
 QW_OML_API_KEY = '8c4eebcda506ae1065902c2b224369b9'
 
