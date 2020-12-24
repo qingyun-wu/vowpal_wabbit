@@ -131,7 +131,6 @@ class TrainableVWTrial:
                 if hp_name not in vw_fs_config:
                     vw_fs_config[hp_name] = []
                 vw_fs_config[hp_name].append(c)
-            print('vw confi', vw_fs_config)
         return vw_fs_config
 
         
@@ -146,10 +145,14 @@ class AutoVW:
         init_feature_set (dict): the init config for the hyperparameters to tune
     """
     learner_class = pyvw.vw
-    MAX_NUM = 2**16
-    def __init__(self, min_resource_budget: int, policy_budget: int, 
-        namespace_feature_dim: dict, inter_order: int, fixed_hp_config: dict, scheduler_name: str=None, **kwargs):
-        from AML.blendsearch.trial_runner import OnlineTrialRunnerWithChampion
+    def __init__(self, 
+        min_resource_budget: int, policy_budget: int, namespace_feature_dim: dict, 
+        inter_order: int, 
+        fixed_hp_config: dict, 
+        priority_policy: str,
+        champion_test_policy: str,
+        **kwargs):
+        from AML.blendsearch.tune.trial_runner import BaseOnlineTrialRunner, OnlineTrialRunnerWithChampion
         from ray.tune.schedulers import FIFOScheduler, ASHAScheduler, HyperBandScheduler
         from AML.blendsearch.scheduler.online_scheduler import OnlineDoublingScheduler 
         from AML.blendsearch.searcher.online_searcher import BaseFeatureSearcher, FeatureInteractionSearcher 
@@ -165,16 +168,12 @@ class AutoVW:
         self._mode = 'min'
         self._init_result = {
         'resource_used': 0,
-        'resource_budget': self._min_resource_budget,
         'data_sample_count': 0,
         'loss_sum': np.inf,
         'loss_avg': np.inf, 
         'cb': 1.0,
         'loss_ucb': np.inf, 
         'loss_lcb': np.inf,
-        'is_newly_promoted_champion': False,
-        'is_champion': False,
-        'priority_factor': 1.0,
         }
         self._loss_func = self._get_loss_func_from_config(self._fixed_hp_config)
         # the incumbent_learner is the incumbent vw when the AutoVW is called
@@ -197,46 +196,37 @@ class AutoVW:
             mode='min',
             init_feature_set = self._init_feature_set,
             init_result = self._init_result,
-            inter_order = inter_order,
             )    
     
         online_scheduler = OnlineDoublingScheduler(
                 resource_used_attr = "resource_used",
-                resource_budget_attr = "resource_budget",
                 doubling_factor = 2,
+                priority_policy = priority_policy,
+                keep_champion_running = True,
                 )
-        asha_scheduler = ASHAScheduler(
-            time_attr='resource_used',
-            metric='loss_ucb',
-            mode='min',
-            max_t= AutoVW.MAX_NUM,
-            grace_period=10,
-            reduction_factor=2,
-            brackets=1)
-
-        hyperband_scheduler = HyperBandScheduler(
-            time_attr='resource_used',
-            reward_attr='loss_avg',
-            metric='loss_ucb',
-            mode='min',
-            max_t= 10000,#AutoVW.MAX_NUM,
-            reduction_factor=2,
-            )
-        if scheduler_name and 'hyperband' in scheduler_name:
-            self._scheduler = hyperband_scheduler
-        else:
-            self._scheduler = online_scheduler
-        
+        self._scheduler = online_scheduler
         self._trial_runner = OnlineTrialRunnerWithChampion(
             search_alg=self._searcher,
             scheduler= self._scheduler,
-            running_budget=self._policy_budget,
-            resource_used_attr="resource_used",
-            resource_budget_attr="resource_budget",
-            doubling_factor = 2,
-            metric = 'loss_lcb',
-            mode = 'min',
+            concurrent_running_budget=self._policy_budget,
+            champion_test_policy = champion_test_policy,
             )
+        
+        # scheduler = OnlineSHA(
+        #         resource_used_attr: str = "resource_used",
+        #         max_possible_resource: float = None,
+        #         priority_policy: str = 'sample_priority',
+        #         doubling_factor: float = 2,
+        #         keep_champion_running = True,
+        #         )
+
+        # trial_runner = AutoCrossOnlineTrialRunner(
+        #     search_alg=self._searcher,
+        #     scheduler= self._scheduler,
+        #     running_budget=self._policy_budget,
+        #     test_policy = test_policy,
+        #     )
+       
     @property  
     def incumbent_vw(self):
         return self._incumbent_learner
@@ -266,9 +256,6 @@ class AutoVW:
         self._learner_dic[trial.trial_id].update_res_budget_in_result(trial.result)
         # train the model for one step
         self._learner_dic[trial.trial_id].train_vw(data, y, trial.result)
-        # update trial result
-        #TODO: should not change the result of a trial out side the trial runner
-        trial.result = self._learner_dic[trial.trial_id].get_result() 
         return self._learner_dic[trial.trial_id].get_result() 
 
     def predict(self, x):
@@ -285,19 +272,18 @@ class AutoVW:
             y (float): label of the example (optional) 
             #TODO: label can be obtained from x
         """
-        scheduled_trials = self._trial_runner.schedule_trials()
+        scheduled_trials = self._trial_runner.schedule_trials_to_run()
         # clean up old models from self._learner_dics
         self._clean_up_old_models(scheduled_trials) 
         for trial in scheduled_trials:
             result = self._train_vw_trial(trial, x, y)
-            self._trial_runner.process_trial_result(trial, result)
-        self._trial_runner.process_running_trials(scheduled_trials)
+            self._trial_runner.process_trial_result(trial.trial_id, result)
         self._best_trial = self._select_trial_for_prediction(scheduled_trials, self._metric, self._mode)
         self._incumbent_learner = self._learner_dic[self._best_trial.trial_id].trained_model
         self._iter +=1
 
     def _clean_up_old_models(self, scheduled_trials):
-
+        logger.debug('scheduled_trials %s', [trial.trial_id for trial in scheduled_trials])
         last_running_trial_ids = list(self._learner_dic.keys())
         scheduled_trial_ids = [trial.trial_id for trial in scheduled_trials]
         removed_ones = [x for x in last_running_trial_ids if x not in scheduled_trial_ids]
