@@ -44,7 +44,7 @@ class TrainableVWTrial:
     """
     model_class = pyvw.vw
     cost_unit = 1.0
-    const = 0.5
+    const = 0.1
     # quartic_config_key = 'q'
     # cubic_config_key = 'cubic'
     interactions_config_key = 'interactions'
@@ -65,10 +65,11 @@ class TrainableVWTrial:
         self.trained_model = TrainableVWTrial.model_class(
             **self._vw_fs_config, **self._fixed_config )
         # TODO: how to get the dim of parameters
-        self._dim = self.get_dim(namespace_feature_dim, feature_set)
+        self._dim = self.get_dim(namespace_feature_dim, feature_set)/5.0
         self._resouce_used_attr = 'resource_used'
-        self._resource_budget_attr = 'resource_budget'
         self._result = {'config': self._feature_set,}
+        self._data_sample_size = 0
+        self._bound_of_loss = 1.0
         assert init_result is not None, 'need to provide init result'
         for k,v in init_result.items():
             if k != 'config': self._result[k] = v
@@ -85,7 +86,7 @@ class TrainableVWTrial:
         logger.debug('dim %s %s', dim, namespace_set)
         return dim
 
-    def train_vw(self, data, y, old_result):
+    def train_vw(self, data, y):
         """ train vw model
         """
         y_pred = self.trained_model.predict(data)
@@ -95,28 +96,24 @@ class TrainableVWTrial:
         # TODO: remove the hard code part and assumeing the size of data sample each step is 1
         data_sample_size = 1
         # TODO: need to re-write the dim of feature
-        self._result[self._resouce_used_attr] +=  \
-            self._dim*TrainableVWTrial.cost_unit*data_sample_size
+        self._result[self._resouce_used_attr] +=  TrainableVWTrial.cost_unit*data_sample_size
+            #self._dim*TrainableVWTrial.cost_unit*data_sample_size
         self._result['data_sample_count'] += data_sample_size
+        self._data_sample_size += data_sample_size
+        new_loss = (loss_sum - self._result['loss_sum'])/data_sample_size if \
+            self._result['loss_sum'] else loss_sum/data_sample_size
         self._result['loss_sum'] = loss_sum
         # TODO: what if the loss function in the final evaluation phase is not the same as the one in get_sum_loss?
-        
-        # loss = mean_squared_error([y_pred], [y])
-        # loss_sum = loss + old_result['loss_sum']
-        # print('loss sum', loss_sum)
         self._result['loss_avg'] =  self._result['loss_sum']/self._result['data_sample_count']
-        self._result['cb'] =  TrainableVWTrial.const*math.sqrt(self._dim/self._result['data_sample_count']) 
+        self._bound_of_loss = max(self._bound_of_loss, new_loss)
+        logger.debug('bound of loss %s',self._bound_of_loss )
+        self._result['cb'] =  self._bound_of_loss*TrainableVWTrial.const*math.sqrt(self._dim/self._result['data_sample_count']) 
+        self._result['comp'] = self._bound_of_loss*TrainableVWTrial.const*math.sqrt(self._dim/self._result['data_sample_count']) 
         self._result['loss_ucb'] = min(self._result['loss_avg'] + self._result['cb'],
             TrainableVWTrial.LOSS_MAX)
         self._result['loss_lcb'] = max(self._result['loss_avg'] - self._result['cb'], 
             TrainableVWTrial.LOSS_MIN)
         logger.debug('result %s', self._result)
-    def update_res_budget_in_result(self, result):
-        """ the resource update usually needs to be updated externally 
-        by some algorithm or scheduler
-        """
-        if self._resource_budget_attr in result:
-            self._result[self._resource_budget_attr] = result[self._resource_budget_attr]
 
     def get_result(self):
         return self._result
@@ -140,96 +137,111 @@ class AutoVW:
     class variable: learner_class, which is set to be vw learner
     Args:
         min_resource_budget (int): the number of min resource
-        policy_budget (int): the number of policy budget
+        concurrent_running_budget (int): the number of policy budget
         fixed_hp_config (dict): the default config of the non-changing hyperparameters
         init_feature_set (dict): the init config for the hyperparameters to tune
     """
     learner_class = pyvw.vw
     def __init__(self, 
-        min_resource_budget: int, policy_budget: int, namespace_feature_dim: dict, 
-        inter_order: int, 
+        min_resource_budget: float, 
+        concurrent_running_budget: int, 
+        namespace_feature_dim: dict, 
         fixed_hp_config: dict, 
         priority_policy: str,
         champion_test_policy: str,
-        **kwargs):
+        trial_runner_name: str='base+base',
+        model_select_policy: str=None,
+        run_fixed_trials: str = None,
+        ):
         from AML.blendsearch.tune.trial_runner import BaseOnlineTrialRunner, OnlineTrialRunnerWithChampion
-        from ray.tune.schedulers import FIFOScheduler, ASHAScheduler, HyperBandScheduler
-        from AML.blendsearch.scheduler.online_scheduler import OnlineDoublingScheduler 
+        from AML.blendsearch.tune.auto_cross_trial_runner import AutoCrossOnlineTrialRunner
+        from AML.blendsearch.scheduler.online_scheduler import OnlineDoublingScheduler
+        from AML.blendsearch.scheduler.online_successive_halving import OnlineSHA
         from AML.blendsearch.searcher.online_searcher import BaseFeatureSearcher, FeatureInteractionSearcher 
+        self._concurrent_running_budget = concurrent_running_budget
         self._min_resource_budget = min_resource_budget
-        self._policy_budget = policy_budget
+        self._trial_runner_name = trial_runner_name
         self._fixed_hp_config = fixed_hp_config
-        self._init_feature_set = set(namespace_feature_dim.keys())
-        self._namespace_feature_dim = namespace_feature_dim
-        self._learner_class = AutoVW.learner_class
-        self._best_trial = None 
-        self._all_trials = {} # trial_id -> trial
-        self._metric = 'loss_ucb'
-        self._mode = 'min'
+        self._namespace_feature_dim = namespace_feature_dim 
+        self._model_select_policy = model_select_policy if model_select_policy else 'online_ucb'
+        self._model_selection_metric = 'loss_ucb'
+        self._model_selection_mode = 'min'
         self._init_result = {
-        'resource_used': 0,
-        'data_sample_count': 0,
-        'loss_sum': np.inf,
-        'loss_avg': np.inf, 
-        'cb': 1.0,
-        'loss_ucb': np.inf, 
-        'loss_lcb': np.inf,
-        }
+            'resource_used': 0,
+            'data_sample_count': 0,
+            'loss_sum': np.inf,
+            'loss_avg': np.inf, 
+            'cb': 1.0,
+            'loss_ucb': np.inf, 
+            'loss_lcb': np.inf,}
         self._loss_func = self._get_loss_func_from_config(self._fixed_hp_config)
         # the incumbent_learner is the incumbent vw when the AutoVW is called
         # the incumbent_learner is udpated everytime the learn function is called.
-        self._incumbent_learner = AutoVW.learner_class(
-            **self._fixed_hp_config)
+        self._incumbent_trial_id = None
+        self._incumbent_trial_model = None
         self._y_pred = None 
         self._sum_loss = 0.0
         self._learner_dic = {}
-        # self._searcher = NaiveSearcher(
-        #     metric='loss_ucb',
-        #     mode= self._mode ,
-        #     init_feature_set = init_feature_set,
-        #     init_result = self._init_result,
-        #     )
+        self._scheduled_trials = []
         self._iter = 0
-
-        self._searcher = FeatureInteractionSearcher(
+        keep_champion_running = True
+        progressive_searcher = FeatureInteractionSearcher(
             metric='loss_ucb',
             mode='min',
-            init_feature_set = self._init_feature_set,
+            init_feature_set = set(namespace_feature_dim.keys()),
             init_result = self._init_result,
-            )    
-    
-        online_scheduler = OnlineDoublingScheduler(
-                resource_used_attr = "resource_used",
-                doubling_factor = 2,
-                priority_policy = priority_policy,
-                keep_champion_running = True,
-                )
-        self._scheduler = online_scheduler
-        self._trial_runner = OnlineTrialRunnerWithChampion(
-            search_alg=self._searcher,
-            scheduler= self._scheduler,
-            concurrent_running_budget=self._policy_budget,
-            champion_test_policy = champion_test_policy,
-            )
-        
-        # scheduler = OnlineSHA(
-        #         resource_used_attr: str = "resource_used",
-        #         max_possible_resource: float = None,
-        #         priority_policy: str = 'sample_priority',
-        #         doubling_factor: float = 2,
-        #         keep_champion_running = True,
-        #         )
+            min_resource_budget = min_resource_budget)    
 
-        # trial_runner = AutoCrossOnlineTrialRunner(
-        #     search_alg=self._searcher,
-        #     scheduler= self._scheduler,
-        #     running_budget=self._policy_budget,
-        #     test_policy = test_policy,
-        #     )
-       
+        scheduler_common_args = {
+            'resource_used_attr': "resource_used",
+             'doubling_factor': 2,
+             'priority_policy': priority_policy,
+             'keep_champion_running': keep_champion_running,
+             }
+
+        trial_runner_commmon_args ={
+            'concurrent_running_budget': concurrent_running_budget, 
+            'search_alg': progressive_searcher,
+            "champion_test_policy": champion_test_policy,
+            'min_resource_budget': min_resource_budget,
+            'resource_used_attr': "resource_used",
+            'run_fixed_trials': run_fixed_trials,
+            }
+
+        online_scheduler = OnlineDoublingScheduler(**scheduler_common_args)
+        online_sha_scheduler = OnlineSHA(**scheduler_common_args)                                                                                                                                                                                                                                                                                                                                                                                                                           
+        if 'online' in self._trial_runner_name:
+            self._trial_runner = OnlineTrialRunnerWithChampion(
+                scheduler= online_scheduler,
+                **trial_runner_commmon_args,
+                )
+        elif 'SHA' in self._trial_runner_name:
+            self._trial_runner = AutoCrossOnlineTrialRunner(
+                scheduler= online_sha_scheduler,
+                **trial_runner_commmon_args,
+                )
+        elif 'base+sha' in self._trial_runner_name:
+            self._trial_runner = BaseOnlineTrialRunner(
+                scheduler= online_sha_scheduler,
+                **trial_runner_commmon_args
+                )
+        elif 'base+base' in self._trial_runner_name:
+            self._trial_runner = BaseOnlineTrialRunner(
+                scheduler= online_scheduler,
+                **trial_runner_commmon_args
+                )
+        
+        # self._trial_runner = OnlineTrialRunnerWithChampion(
+        # # search_alg= progressive_searcher,
+        # scheduler= online_scheduler,
+        # # concurrent_running_budget=self._concurrent_running_budget,
+        # # champion_test_policy = champion_test_policy,
+        # **self._trial_runner_commmon_args,
+        # ) 
+
     @property  
     def incumbent_vw(self):
-        return self._incumbent_learner
+        return self._incumbent_trial_model
 
     @property  
     def init_result(self):
@@ -247,21 +259,25 @@ class AutoVW:
             NotImplementedError
         return loss_func
 
-    def _train_vw_trial(self, trial, data, y):
-        # if trial does not exist, create a new model
+    def _construct_vw_model_from_trial(self, trial):
         if trial.trial_id not in self._learner_dic:
             self._learner_dic[trial.trial_id] = TrainableVWTrial(trial.trial_id, 
                 trial.config, self._namespace_feature_dim, self._fixed_hp_config, self._init_result)
-        # get trial result
-        self._learner_dic[trial.trial_id].update_res_budget_in_result(trial.result)
-        # train the model for one step
-        self._learner_dic[trial.trial_id].train_vw(data, y, trial.result)
-        return self._learner_dic[trial.trial_id].get_result() 
 
     def predict(self, x):
         """ Predict on the input example
         """
-        self._y_predict = self._incumbent_learner.predict(x)
+        if not self._incumbent_trial_id:
+            # do the initial scheduling
+            self._scheduled_trials = self._trial_runner.schedule_trials_to_run(self._incumbent_trial_id)
+            assert len(self._learner_dic) == 0, 'initial prediction'
+            self._cleanup_old_and_construct_new_model(self._scheduled_trials)
+            assert self._trial_runner.champion_trial.trial_id in [t.trial_id for t in self._scheduled_trials]
+            assert self._trial_runner.champion_trial.trial_id in self._learner_dic.keys()
+            self._incumbent_trial_id = self._trial_runner.champion_trial.trial_id
+            self._incumbent_trial_model = self._learner_dic[self._trial_runner.champion_trial.trial_id].trained_model
+
+        self._y_predict = self._learner_dic[self._incumbent_trial_id].trained_model.predict(x)
         return self._y_predict
 
     def learn(self, x, y = None):
@@ -272,29 +288,45 @@ class AutoVW:
             y (float): label of the example (optional) 
             #TODO: label can be obtained from x
         """
-        scheduled_trials = self._trial_runner.schedule_trials_to_run()
+       
         # clean up old models from self._learner_dics
-        self._clean_up_old_models(scheduled_trials) 
-        for trial in scheduled_trials:
-            result = self._train_vw_trial(trial, x, y)
-            self._trial_runner.process_trial_result(trial.trial_id, result)
-        self._best_trial = self._select_trial_for_prediction(scheduled_trials, self._metric, self._mode)
-        self._incumbent_learner = self._learner_dic[self._best_trial.trial_id].trained_model
-        self._iter +=1
+        self._cleanup_old_and_construct_new_model(self._scheduled_trials) 
+        # train the model that are scheduled in self._learner_dic.
+        for trial_id in self._learner_dic.keys():
+            # train the model for one step
+            self._learner_dic[trial_id].train_vw(x, y)
+            result = self._learner_dic[trial_id].get_result() 
+            # report result to the trial runner
+            self._trial_runner.process_trial_result(trial_id, result)
 
-    def _clean_up_old_models(self, scheduled_trials):
-        logger.debug('scheduled_trials %s', [trial.trial_id for trial in scheduled_trials])
-        last_running_trial_ids = list(self._learner_dic.keys())
-        scheduled_trial_ids = [trial.trial_id for trial in scheduled_trials]
-        removed_ones = [x for x in last_running_trial_ids if x not in scheduled_trial_ids]
-        newly_added_ones = [x for x in scheduled_trial_ids if x not in last_running_trial_ids]
-        if removed_ones:
-            logger.debug('====clean up at iteration %s====', self._iter)
-            logger.debug('    clean up %s models, including %s ', len(removed_ones), removed_ones)
-            logger.debug('    add      %s models, including %s', len(newly_added_ones), newly_added_ones)
-            logger.debug('now running  %s models, including %s', len(scheduled_trial_ids), scheduled_trial_ids)
-            for trail_id in removed_ones:
-                del self._learner_dic[trail_id]
+        best_trial = self._select_trial_for_prediction()
+        self._incumbent_trial_id = best_trial.trial_id
+        self._incumbent_trial_model = best_trial.trained_model
+        self._iter +=1
+        # schedule which models to train 
+        self._scheduled_trials = self._trial_runner.schedule_trials_to_run(self._incumbent_trial_id)
+        assert len(self._scheduled_trials) <= self._min_resource_budget
+        
+    def _cleanup_old_and_construct_new_model(self, scheduled_trials):
+        if scheduled_trials:
+            logger.debug('scheduled_trials %s', [trial.trial_id for trial in scheduled_trials])
+            last_running_trial_ids = list(self._learner_dic.keys())
+            scheduled_trial_ids = [trial.trial_id for trial in scheduled_trials]
+            removed_ones = [x for x in last_running_trial_ids if x not in scheduled_trial_ids]
+            newly_added_ones = [x for x in scheduled_trial_ids if x not in last_running_trial_ids]
+            if removed_ones:
+                logger.debug('====clean up at iteration %s====', self._iter)
+                logger.debug('    clean up %s models, including %s ', len(removed_ones), removed_ones)
+                logger.debug('    add      %s models, including %s', len(newly_added_ones), newly_added_ones)
+                logger.debug('now running  %s models, including %s', len(scheduled_trial_ids), scheduled_trial_ids)
+                for trail_id in removed_ones:
+                    # TODO: how can we ensure we do not easily remove the incumbent_trials
+                    if trail_id == self._incumbent_trial_id:
+                        logger.critical('cleaning up the incumbent trial')
+                    del self._learner_dic[trail_id]
+            for trial in scheduled_trials:
+                # create a new model
+                self._construct_vw_model_from_trial(trial)
         
     def _update_sum_loss(self, y):
         loss = self._loss_func([self._y_pred], y)
@@ -307,23 +339,35 @@ class AutoVW:
         # TODO: need to implement get_sum_loss
 
     def finished(self):
-        return self._incumbent_learner.finished()
+        return self._incumbent_trial_model.finished()
 
-    @staticmethod
-    def _select_trial_for_prediction(running_trials, metric, mode):
-        best_score = float('+inf') if mode=='min' else float('-inf')
+    def _select_trial_for_prediction(self,):
+        if 'avg'  in self._model_select_policy:
+            self._model_selection_metric = 'loss_avg'
+        else:
+            self._model_selection_metric = 'loss_ucb'
+
+        best_score = float('+inf') if self._model_selection_mode=='min' else float('-inf')
         best_trial = None
-        if len(running_trials)!=0:
-            for trial in running_trials:
-                score = trial.result[metric]
-                if 'min' == mode and  score < best_score or \
-                    'max' == mode and score > best_score:
+        best_trial_id = None
+        if len(self._learner_dic)!=0:
+            for key, trial in self._learner_dic.items():
+                score = trial._result[self._model_selection_metric]
+                if 'min' == self._model_selection_mode and  score < best_score or \
+                    'max' == self._model_selection_mode and score > best_score:
                     best_score = score
                     best_trial = trial
-        logger.info('trial for prediction %s', best_trial.config)
-        return best_trial
-    
-    
+                    best_trial_id = key    
 
-
-    
+        if 'threshold' in self._model_select_policy:
+            if best_trial._data_sample_size > self._min_resource_budget-1 \
+                or self._incumbent_trial_id not in self._learner_dic:
+                logger.debug('selecting the best trial %s at iter %s', best_trial.trial_id, self._iter)
+                return best_trial
+            else: 
+                logger.debug('%s, %s %s',  best_trial._data_sample_size,self._min_resource_budget , best_trial.trial_id)
+                logger.debug('selecting the incumbent trial %s at iter %s',self._incumbent_trial_id, self._iter )
+                return self._learner_dic[self._incumbent_trial_id]
+        else:
+            logger.info('trial for prediction %s %s', best_trial_id, best_trial._result)
+            return best_trial
