@@ -157,7 +157,7 @@ class AutoVW:
         from AML.blendsearch.tune.auto_cross_trial_runner import AutoCrossOnlineTrialRunner
         from AML.blendsearch.scheduler.online_scheduler import OnlineDoublingScheduler
         from AML.blendsearch.scheduler.online_successive_halving import OnlineSHA
-        from AML.blendsearch.searcher.online_searcher import BaseFeatureSearcher, FeatureInteractionSearcher 
+        from AML.blendsearch.searcher.online_searcher import ChampionFrontierSearcher 
         self._concurrent_running_budget = concurrent_running_budget
         self._min_resource_budget = min_resource_budget
         self._trial_runner_name = trial_runner_name
@@ -185,11 +185,11 @@ class AutoVW:
         self._scheduled_trials = []
         self._iter = 0
         keep_champion_running = True
-        progressive_searcher = FeatureInteractionSearcher(
+        progressive_searcher = ChampionFrontierSearcher(
             metric='loss_ucb',
             mode='min',
             init_feature_set = set(namespace_feature_dim.keys()),
-            init_result = self._init_result,
+            init_result = self._init_result.copy(),
             min_resource_budget = min_resource_budget)    
 
         scheduler_common_args = {
@@ -200,7 +200,6 @@ class AutoVW:
              }
 
         trial_runner_commmon_args ={
-            'concurrent_running_budget': concurrent_running_budget, 
             'search_alg': progressive_searcher,
             "champion_test_policy": champion_test_policy,
             'min_resource_budget': min_resource_budget,
@@ -230,14 +229,6 @@ class AutoVW:
                 scheduler= online_scheduler,
                 **trial_runner_commmon_args
                 )
-        
-        # self._trial_runner = OnlineTrialRunnerWithChampion(
-        # # search_alg= progressive_searcher,
-        # scheduler= online_scheduler,
-        # # concurrent_running_budget=self._concurrent_running_budget,
-        # # champion_test_policy = champion_test_policy,
-        # **self._trial_runner_commmon_args,
-        # ) 
 
     @property  
     def incumbent_vw(self):
@@ -269,7 +260,8 @@ class AutoVW:
         """
         if not self._incumbent_trial_id:
             # do the initial scheduling
-            self._scheduled_trials = self._trial_runner.schedule_trials_to_run(self._incumbent_trial_id)
+            self._scheduled_trials = self._trial_runner.schedule_trials_to_run(\
+                self._concurrent_running_budget, self._incumbent_trial_id)
             assert len(self._learner_dic) == 0, 'initial prediction'
             self._cleanup_old_and_construct_new_model(self._scheduled_trials)
             assert self._trial_runner.champion_trial.trial_id in [t.trial_id for t in self._scheduled_trials]
@@ -304,7 +296,8 @@ class AutoVW:
         self._incumbent_trial_model = best_trial.trained_model
         self._iter +=1
         # schedule which models to train 
-        self._scheduled_trials = self._trial_runner.schedule_trials_to_run(self._incumbent_trial_id)
+        self._scheduled_trials = self._trial_runner.schedule_trials_to_run(\
+            self._concurrent_running_budget, self._incumbent_trial_id)
         assert len(self._scheduled_trials) <= self._min_resource_budget
         
     def _cleanup_old_and_construct_new_model(self, scheduled_trials):
