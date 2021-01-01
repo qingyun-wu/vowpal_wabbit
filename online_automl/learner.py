@@ -149,13 +149,13 @@ class AutoVW:
         fixed_hp_config: dict, 
         priority_policy: str,
         champion_test_policy: str,
-        trial_runner_name: str='base+base',
+        trial_runner_name: str='online+sd',
         model_select_policy: str=None,
         run_fixed_trials: str = None,
         ):
         from AML.blendsearch.tune.trial_runner import BaseOnlineTrialRunner, OnlineTrialRunnerWithChampion
         from AML.blendsearch.tune.auto_cross_trial_runner import AutoCrossOnlineTrialRunner
-        from AML.blendsearch.scheduler.online_scheduler import OnlineDoublingScheduler
+        from AML.blendsearch.scheduler.online_scheduler import OnlineSuccessiveDoublingScheduler
         from AML.blendsearch.scheduler.online_successive_halving import OnlineSHA
         from AML.blendsearch.searcher.online_searcher import ChampionFrontierSearcher 
         self._concurrent_running_budget = concurrent_running_budget
@@ -207,26 +207,27 @@ class AutoVW:
             'run_fixed_trials': run_fixed_trials,
             }
 
-        online_scheduler = OnlineDoublingScheduler(**scheduler_common_args)
-        online_sha_scheduler = OnlineSHA(**scheduler_common_args)                                                                                                                                                                                                                                                                                                                                                                                                                           
-        if 'online' in self._trial_runner_name:
-            self._trial_runner = OnlineTrialRunnerWithChampion(
-                scheduler= online_scheduler,
-                **trial_runner_commmon_args,
-                )
-        elif 'SHA' in self._trial_runner_name:
+        # online_scheduler = OnlineDoublingScheduler(**scheduler_common_args)
+        online_sd_scheduler = OnlineSuccessiveDoublingScheduler(**scheduler_common_args)
+        online_sha_scheduler = OnlineSHA(**scheduler_common_args)   
+        if self._trial_runner_name == 'autocross+sdsha':
             self._trial_runner = AutoCrossOnlineTrialRunner(
                 scheduler= online_sha_scheduler,
                 **trial_runner_commmon_args,
                 )
-        elif 'base+sha' in self._trial_runner_name:
+        if self._trial_runner_name == 'autocross+sd':
+            self._trial_runner = AutoCrossOnlineTrialRunner(
+                scheduler= online_sd_scheduler,
+                **trial_runner_commmon_args,
+                )
+        elif self._trial_runner_name == 'online+sdsha':
             self._trial_runner = BaseOnlineTrialRunner(
                 scheduler= online_sha_scheduler,
                 **trial_runner_commmon_args
                 )
-        elif 'base+base' in self._trial_runner_name:
+        elif self._trial_runner_name == 'online+sd':
             self._trial_runner = BaseOnlineTrialRunner(
-                scheduler= online_scheduler,
+                scheduler= online_sd_scheduler,
                 **trial_runner_commmon_args
                 )
 
@@ -268,7 +269,7 @@ class AutoVW:
             assert self._trial_runner.champion_trial.trial_id in self._learner_dic.keys()
             self._incumbent_trial_id = self._trial_runner.champion_trial.trial_id
             self._incumbent_trial_model = self._learner_dic[self._trial_runner.champion_trial.trial_id].trained_model
-
+            assert len(self._learner_dic) == self._concurrent_running_budget
         self._y_predict = self._learner_dic[self._incumbent_trial_id].trained_model.predict(x)
         return self._y_predict
 
