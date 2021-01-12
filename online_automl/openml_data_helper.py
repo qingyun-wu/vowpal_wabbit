@@ -1,7 +1,10 @@
 import logging
 RANDOM_SEED = 20201234
-from config import VW_DS_DIR, QW_OML_API_KEY
-
+from config import QW_OML_API_KEY
+from config import VW_DS_DIR
+from config import OPENML_REGRESSION_LIST_inst_larger_than_5k, \
+    OPENML_REGRESSION_LIST_inst_larger_than_10k, OPENML_REGRESSION_LIST_inst_larger_than_100k, \
+        OPENML_REGRESSION_LIST_larger_than_1k
 
 class OpenML2VWData:
     VW_DS_DIR = VW_DS_DIR
@@ -14,11 +17,12 @@ class OpenML2VWData:
         if 'regression' in self._task_type:
             self._is_regression = True        
         self.vw_examples = self.load_vw_dataset(did, OpenML2VWData.VW_DS_DIR, self._is_regression)
-        print( 'lssine', len(self.vw_examples))
+        print( 'number of samples', len(self.vw_examples))
         for i, e in enumerate(self.vw_examples):
             self.Y.append(float(e.split('|')[0]))
         print(i, self.Y[0:5])
         logging.info('y label%s', self.Y[0:5])
+
     @staticmethod
     def load_vw_dataset(did, ds_dir, is_regression):
         import os
@@ -32,9 +36,6 @@ class OpenML2VWData:
                 # data_list.append(vw_content)
         return vw_content
 
-
-
-
 import argparse
 # from config import OML_API_KEY
 import gzip
@@ -45,13 +46,15 @@ import string
 import pandas as pd
 import scipy
 ns_list = list(string.ascii_lowercase)
+# target # of ns: 10-26.
+# TODO: split features into 10-26 ns:(1) look at the prefix (10<# of unique prefix< 26); (2) sequentially.
 
-
+# convert openml dataset to vw example
 def save_vw_dataset_w_ns(X, y, did, ds_dir, is_regression):
     
     if is_regression:
         fname = 'ds_{}_{}.vw'.format(did, 0)
-        print(X.shape[0])
+        print('dataset size', X.shape[0])
         print('saving data', did, ds_dir, fname)
         from os import path
         if not path.exists(os.path.join(ds_dir, fname)):
@@ -86,47 +89,27 @@ def shuffle_data(X, y, seed):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='openML to vw converter')
-    parser.add_argument('-min_did', type=int, default=0, help='minimum dataset id to process')
-    parser.add_argument('-max_did', type=int, default=None, help='maximum dataset id to process')
+    parser.add_argument('-min_sample_size', type=int, default=1000, help='minimum sample size')
+    parser.add_argument('-max_sample_size', type=int, default=None, help='maximum sample size')
     args = parser.parse_args()
-    print(args.min_did, ' to ', args.max_did)
-
     openml.config.apikey =  QW_OML_API_KEY
     openml.config.set_cache_directory('./data/omlcache/')
 
     print('loaded openML')
-    if not os.path.exists(VW_DS_DIR):
-        os.makedirs(VW_DS_DIR)
-    did_list_5k_to_10k = [i for i in OPENML_REGRESSION_LIST_inst_larger_than_5k if i not in OPENML_REGRESSION_LIST_inst_larger_than_10k] 
-    did_list_10k_to_100k = [i for i in OPENML_REGRESSION_LIST_inst_larger_than_10k if i not in OPENML_REGRESSION_LIST_inst_larger_than_100k] 
-    print(len(did_list_5k_to_10k), did_list_5k_to_10k)
-    dids = OPENML_REGRESSION_LIST_inst_larger_than_100k + [1595, 218]
+    if not os.path.exists(VW_DS_DIR): os.makedirs(VW_DS_DIR)
+    if args.min_sample_size >=1000 and args.max_sample_size is None:
+        dids = OPENML_REGRESSION_LIST_larger_than_1k
+    dids = OPENML_REGRESSION_LIST_larger_than_1k
     for did in sorted(dids):
-        # if did < args.min_did:
-        #     continue
-        # if args.max_did is not None and did >= args.max_did:
-        #     break
         print('processing did', did)
         print('getting data,', did)
         ds = openml.datasets.get_dataset(did)
         data = ds.get_data(target=ds.default_target_attribute, dataset_format='array')
-        # try:
-        #     print('getting data,', did)
-        #     ds = openml.datasets.get_dataset(did)
-        #     data = ds.get_data(target=ds.default_target_attribute, dataset_format='array')
-        # except:
-        #     data = None
-        #     print('get data error')
         X, y = data[0], data[1] # return X: pd DataFrame, y: pd series
         if data and isinstance(X, np.ndarray):
-            shuffled_X, shuffled_y = shuffle_data(X, y, seed = RANDOM_SEED)
-            save_vw_dataset_w_ns(shuffled_X, shuffled_y, did, VW_DS_DIR, is_regression = True)
-            # vw_line = load_vw_dataset(did, VW_DS_DIR, is_regression=True)
-            # print(len(vw_line), vw_line)
+             save_vw_dataset_w_ns(X, y, did, VW_DS_DIR, is_regression = True)
         else:
             print('no data')
         
-
 ## command line:
-# python data_openml.py  -max_did 219 -min_did 218
-# python data_openml.py  -max_did 573 -min_did 572
+# python openml_data_helper.py -min_sample_size 1000
