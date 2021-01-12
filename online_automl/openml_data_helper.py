@@ -100,16 +100,23 @@ if __name__ == '__main__':
     if args.min_sample_size >=1000 and args.max_sample_size is None:
         dids = OPENML_REGRESSION_LIST_larger_than_1k
     dids = OPENML_REGRESSION_LIST_larger_than_1k
+    failed_datasets = []
     for did in sorted(dids):
         print('processing did', did)
         print('getting data,', did)
-        ds = openml.datasets.get_dataset(did)
-        data = ds.get_data(target=ds.default_target_attribute, dataset_format='array')
-        X, y = data[0], data[1] # return X: pd DataFrame, y: pd series
-        if data and isinstance(X, np.ndarray):
-             save_vw_dataset_w_ns(X, y, did, VW_DS_DIR, is_regression = True)
-        else:
-            print('no data')
-        
+        try:
+            ds = openml.datasets.get_dataset(did)
+            data = ds.get_data(target=ds.default_target_attribute, dataset_format='array')
+            X, y = data[0], data[1] # return X: pd DataFrame, y: pd series
+            if data and isinstance(X, np.ndarray):
+                save_vw_dataset_w_ns(X, y, did, VW_DS_DIR, is_regression = True)
+            else:
+                print('no data')
+        except:
+            failed_datasets.append(did)
+            print('-------------failing to save dataset!!', did)
+    print('-----------failed datasets', failed_datasets)
 ## command line:
 # python openml_data_helper.py -min_sample_size 1000
+# failed datasets [1414, 5572, 40753, 41463, 42080, 42092, 42125, 42130, 42131, 42160, 42183, 42207, 
+# 42208, 42362, 42367, 42464, 42559, 42635, 42672, 42673, 42677, 42688, 42720, 42721, 42726, 42728, 42729, 42731]
