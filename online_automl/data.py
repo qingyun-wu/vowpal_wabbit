@@ -17,16 +17,12 @@ RANDOMSEED = 8888
 
 logger = logging.getLogger(__name__)
 class DataSimulator:
-##TODO: add description about the DataSimulator
-##TODO: currently building the DataSimulator from simulation. 
-##May need to consider constructing the DataSimulator from supervised datasets
-
     def __init__(self, iter_num, parameter=None):
         self.Y = None 
         self.raw_ns = ['a', 'b', 'c', 'd', 'e']
         #key is namespace id, and value is the dim of the namespace
         self.raw_ns_dic = {'a':3, 'b':3, 'c':3, 'd':3, 'e':3}
-        self.ground_truth_ns = ['a', 'b', 'c', 'd', 'e','ab', 'ac', 'cd', 'ade']  #'ac', 'cd'
+        self.ground_truth_ns = ['a', 'b', 'c', 'd', 'e','ab', 'ac', 'cd',]  #'ac', 'cd'
         self._random_feature = np.random.RandomState(RANDOMSEED)
         self._random_param = np.random.RandomState(RANDOMSEED+100)
         self._random_noise = np.random.RandomState(RANDOMSEED+1234)
@@ -34,6 +30,7 @@ class DataSimulator:
         self._generate_parameter()
         self._generate_reward(self.vw_x_dic_list)
         self._construct_vw_example()
+
     def _generate_raw_X(self, iter_num):
         self.vw_x_dic_list = []
         for i in range(iter_num):
@@ -97,6 +94,7 @@ class DataSimulator:
             # print(raw_vw_example)
             self.vw_examples.append(raw_vw_example)
 
+
 def get_data(iter_num=None, data_source = 'simulation', vw_format=True):
     logging.info('generating data')
     #get data from simulation
@@ -108,9 +106,7 @@ def get_data(iter_num=None, data_source = 'simulation', vw_format=True):
         data_id = int(data_source)
         data = OpenML2VWData(data_id, 'regression') #218
     # oml_vw_data = oml_data.load_vw_dataset(1595, VW_DS_DIR, True)
-    # print(oml_vw_data)
-    X = data.vw_x_dic_list
     Y = data.Y
     if vw_format: vw_examples = data.vw_examples
     logger.debug('first data %s', vw_examples[0])
-    return X, Y, vw_examples
+    return vw_examples, Y
