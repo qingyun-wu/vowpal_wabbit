@@ -5,6 +5,31 @@ import matplotlib.pyplot as plt
 
 from sklearn.preprocessing import PolynomialFeatures
 import itertools
+import logging
+logger = logging.getLogger(__name__)
+def get_ns_feature_dim_from_vw_example(vw_examples):
+    ns_feature_dim = {}
+    vw_e = vw_examples[0]
+    data = vw_e.split('|')
+    for i in range(1, len(data)):
+        logger.debug('name space feature dimension%s', data)
+        if ':' in data[i]:
+            ns, feature = data[i].split(' ')
+            feature_dim = len(feature.split(':'))-1
+        else:
+            data_split = data[i].split(' ')
+            ns = data_split[0]
+            feature_dim = len(data_split)-1
+        if len(ns) ==1:
+            ns_feature_dim[ns] = feature_dim
+    logger.debug('name space feature dimension%s', ns_feature_dim)
+    return ns_feature_dim
+
+def get_y_from_vw_example(vw_example):
+    """ get y from a vw_example. this works for regression dataset
+    """
+    return float(vw_example.split('|')[0])
+
 def convert_tuple_list(tuple_list):
     converted_tuple_list = []
     for element in tuple_list:
