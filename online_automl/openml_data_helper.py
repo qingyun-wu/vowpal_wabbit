@@ -5,10 +5,19 @@ from config import VW_DS_DIR
 from config import OPENML_REGRESSION_LIST_inst_larger_than_5k, \
     OPENML_REGRESSION_LIST_inst_larger_than_10k, OPENML_REGRESSION_LIST_inst_larger_than_100k, \
         OPENML_REGRESSION_LIST_larger_than_1k
-
+import argparse
+import openml
+import os
+import numpy as np
+import string
+import pandas as pd
+import scipy
+import math
+NS_LIST = list(string.ascii_lowercase) + list(string.ascii_uppercase)
+# NS_LIST = list(string.ascii_lowercase)[:10]
 class OpenML2VWData:
     VW_DS_DIR = VW_DS_DIR
-    def __init__(self, did, task_type):
+    def __init__(self, did, max_ns_num, task_type='regression'):
         self._did = did
         self._task_type = task_type
         self._is_regression = False
@@ -16,7 +25,7 @@ class OpenML2VWData:
         self.Y = []
         if 'regression' in self._task_type:
             self._is_regression = True        
-        self.vw_examples = self.load_vw_dataset(did, OpenML2VWData.VW_DS_DIR, self._is_regression)
+        self.vw_examples = self.load_vw_dataset(did, OpenML2VWData.VW_DS_DIR, self._is_regression, max_ns_num)
         print( 'number of samples', len(self.vw_examples))
         for i, e in enumerate(self.vw_examples):
             self.Y.append(float(e.split('|')[0]))
@@ -24,58 +33,98 @@ class OpenML2VWData:
         logging.info('y label%s', self.Y[0:5])
 
     @staticmethod
-    def load_vw_dataset(did, ds_dir, is_regression):
+    def load_vw_dataset(did, ds_dir, is_regression, max_ns_num):
         import os
         data_list = []
         if is_regression:
-            fname = 'ds_{}_{}.vw'.format(did, 0)
+            fname = 'ds_{}_{}_{}.vw'.format(did, max_ns_num, 0) # the second field specifies the largest number of namespaces using.
+            vw_dataset_file = os.path.join(ds_dir, fname)
+            if not os.path.exists(vw_dataset_file) or os.stat(vw_dataset_file).st_size < 1000:
+                get_oml_to_vw(did, max_ns_num)
             with open(os.path.join(ds_dir, fname), 'r') as f:
-                # vw_content = f.readlines()
                 vw_content = f.read().splitlines()
                 print(type(vw_content), len(vw_content))
-                # data_list.append(vw_content)
-        return vw_content
+            return vw_content
 
-import argparse
-# from config import OML_API_KEY
-import gzip
-import openml
-import os
-import numpy as np
-import string
-import pandas as pd
-import scipy
-ns_list = list(string.ascii_lowercase)
+
 # target # of ns: 10-26.
 # TODO: split features into 10-26 ns:(1) look at the prefix (10<# of unique prefix< 26); (2) sequentially.
 
-# convert openml dataset to vw example
-def save_vw_dataset_w_ns(X, y, did, ds_dir, is_regression):
-    
-    if is_regression:
-        fname = 'ds_{}_{}.vw'.format(did, 0)
-        print('dataset size', X.shape[0])
-        print('saving data', did, ds_dir, fname)
-        from os import path
-        if not path.exists(os.path.join(ds_dir, fname)):
-            with open(os.path.join(ds_dir, fname), 'w') as f:
-                if isinstance(X, pd.DataFrame):
-                    for i in range(len(X)):
-                        ns_line =  '{} |{}'.format(str(y[i]), '|'.join('{} {}:{:.6f}'.format(ns_list[j], j, val) for 
-                            j, val in enumerate(X.iloc[i].to_list()) ))
-                        f.write(ns_line)
-                        f.write('\n')
-                elif isinstance(X, np.ndarray):
-                    for i in range(len(X)):
-                        ns_line =  '{} |{}'.format(str(y[i]), '|'.join('{} {}:{:.6f}'.format(ns_list[j], j, val) for 
-                                j, val in enumerate(X[i]) ))
-                        f.write(ns_line)
-                        f.write('\n')
-                elif isinstance(X, scipy.sparse.csr_matrix):
-                    print('sparce')
-                    NotImplementedError
-        
+def oml_to_vw_no_grouping(X, y, ds_dir, fname):
+    print('no feature grouping')
+    with open(os.path.join(ds_dir, fname), 'w') as f:
+        if isinstance(X, pd.DataFrame):
+            for i in range(len(X)):
+                ns_line =  '{} |{}'.format(str(y[i]), '|'.join('{} {}:{:.6f}'.format(NS_LIST[j], j, val) for 
+                    j, val in enumerate(X.iloc[i].to_list()) ))
+                f.write(ns_line)
+                f.write('\n')
+        elif isinstance(X, np.ndarray):
+            for i in range(len(X)):
+                ns_line =  '{} |{}'.format(str(y[i]), '|'.join('{} {}:{:.6f}'.format(NS_LIST[j], j, val) for 
+                        j, val in enumerate(X[i]) ))
+                f.write(ns_line)
+                f.write('\n')
+        elif isinstance(X, scipy.sparse.csr_matrix):
+            print('NotImplementedError for sparse data')
+            NotImplementedError
 
+def oml_to_vw_w_grouping(X, y, ds_dir, fname, orginal_dim, group_num, grouping_method='sequential'):
+    all_indexes = [i for i in range(orginal_dim)]
+    print('grouping', group_num)
+    # split all_indexes into # group_num of groups
+    max_size_per_group = math.ceil(orginal_dim/float(group_num))
+    # Option 1: sequential grouping
+    if grouping_method == 'sequential':
+        
+        group_indexes = [] # lists of lists
+        print('indexes', group_num)
+        for i in range(group_num):
+            print('indexes', group_num, max_size_per_group)
+            indexes = [ind for ind in range(i*max_size_per_group, min( (i+1)*max_size_per_group, orginal_dim)) ]
+            print('indexes', group_num, indexes)
+            if len(indexes)>0: group_indexes.append(indexes)
+            print(group_indexes)
+        print(group_indexes)
+    else: 
+        NotImplementedError
+    if group_indexes:
+        with open(os.path.join(ds_dir, fname), 'w') as f:
+            if isinstance(X, pd.DataFrame):
+                NotImplementedError
+            elif isinstance(X, np.ndarray):
+                for i in range(len(X)):
+                    # ns_content = '{} {}:{:.6f}'.format(NS_LIST[j], j, val) for j, val in enumerate(X[i]) 
+                    NS_content = []
+                    for zz in range(len(group_indexes)):
+                        ns_features = ' '.join('{}:{:.6f}'.format(ind, X[i][ind]) for ind in group_indexes[zz])  
+                        NS_content.append(ns_features)
+                    ns_line =  '{} |{}'.format(str(y[i]), '|'.join('{} {}'.format(NS_LIST[j], NS_content[j]) for 
+                            j in range(len(group_indexes)) ))
+                    # print(ns_line)
+                    f.write(ns_line)
+                    f.write('\n')
+            elif isinstance(X, scipy.sparse.csr_matrix):
+                print('NotImplementedError for sparse data')
+                NotImplementedError
+
+
+def save_vw_dataset_w_ns(X, y, did, ds_dir, max_ns_num, is_regression):
+    """ convert openml dataset to vw example and save to file
+    """
+    if is_regression:
+        fname = 'ds_{}_{}_{}.vw'.format(did, max_ns_num, 0)
+        print('dataset size', X.shape[0], X.shape[1])
+        print('saving data', did, ds_dir, fname)
+        dim = X.shape[1]
+        # do not do feature grouping
+        from os import path
+        # if not path.exists(os.path.join(ds_dir, fname)):
+        if dim < max_ns_num:
+            oml_to_vw_no_grouping(X, y, ds_dir, fname)
+        else:
+            oml_to_vw_w_grouping(X, y, ds_dir, fname, dim, group_num=max_ns_num)
+        
 def shuffle_data(X, y, seed):
     try:
         n = len(X)
@@ -86,10 +135,29 @@ def shuffle_data(X, y, seed):
     y_shuf = y[perm]
     return X_shuf, y_shuf
 
+def get_oml_to_vw(did, max_ns_num, ds_dir=VW_DS_DIR):
+    success = False
+    print('-----getting oml dataset-------', did)
+    ds = openml.datasets.get_dataset(did)
+    data = ds.get_data(target=ds.default_target_attribute, dataset_format='array')
+    try:
+        X, y = data[0], data[1] # return X: pd DataFrame, y: pd series
+        if data and isinstance(X, np.ndarray):
+            print('-----converting oml to vw and and saving oml dataset-------')
+            save_vw_dataset_w_ns(X, y, did, ds_dir, max_ns_num, is_regression = True)
+            success = True
+        else:
+            print('---failed to convert/save oml dataset to vw!!!----')
+    except:
+        print('-------------failed to get oml dataset!!!', did)
+    return success
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='openML to vw converter')
-    parser.add_argument('-min_sample_size', type=int, default=1000, help='minimum sample size')
+    parser.add_argument('-dataset', type=int, default=None, help='dataset id')
+    parser.add_argument('-ns_num', '--ns_num', metavar='ns_num', type = int, 
+        default=10, help="max name space number")
+    parser.add_argument('-min_sample_size', type=int, default=10000, help='minimum sample size')
     parser.add_argument('-max_sample_size', type=int, default=None, help='maximum sample size')
     args = parser.parse_args()
     openml.config.apikey =  QW_OML_API_KEY
@@ -97,26 +165,19 @@ if __name__ == '__main__':
 
     print('loaded openML')
     if not os.path.exists(VW_DS_DIR): os.makedirs(VW_DS_DIR)
-    if args.min_sample_size >=1000 and args.max_sample_size is None:
-        dids = OPENML_REGRESSION_LIST_larger_than_1k
-    dids = OPENML_REGRESSION_LIST_larger_than_1k
+    if args.dataset is not None:
+        dids = [args.dataset]
+    else:
+        if args.min_sample_size >=10000 and args.max_sample_size is None:
+            dids = OPENML_REGRESSION_LIST_inst_larger_than_10k
     failed_datasets = []
     for did in sorted(dids):
         print('processing did', did)
         print('getting data,', did)
-        try:
-            ds = openml.datasets.get_dataset(did)
-            data = ds.get_data(target=ds.default_target_attribute, dataset_format='array')
-            X, y = data[0], data[1] # return X: pd DataFrame, y: pd series
-            if data and isinstance(X, np.ndarray):
-                save_vw_dataset_w_ns(X, y, did, VW_DS_DIR, is_regression = True)
-            else:
-                print('no data')
-        except:
-            failed_datasets.append(did)
-            print('-------------failing to save dataset!!', did)
+        success = get_oml_to_vw(did, args.ns_num)
+        if not success: failed_datasets.append(did)
     print('-----------failed datasets', failed_datasets)
 ## command line:
-# python openml_data_helper.py -min_sample_size 1000
+# python openml_data_helper.py -min_sample_size 10000
 # failed datasets [1414, 5572, 40753, 41463, 42080, 42092, 42125, 42130, 42131, 42160, 42183, 42207, 
 # 42208, 42362, 42367, 42464, 42559, 42635, 42672, 42673, 42677, 42688, 42720, 42721, 42726, 42728, 42729, 42731]

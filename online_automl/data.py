@@ -96,7 +96,7 @@ class DataSimulator:
             self.vw_examples.append(raw_vw_example)
 
 
-def get_data(iter_num=None, data_source = 'simulation', vw_format=True, shuffle=False, use_log=True):
+def get_data(iter_num=None, data_source = 'simulation', vw_format=True, max_ns_num=10, shuffle=False, use_log=True):
     logging.info('generating data')
     #get data from simulation
     vw_examples = None
@@ -107,7 +107,7 @@ def get_data(iter_num=None, data_source = 'simulation', vw_format=True, shuffle=
         # get openml data
         from openml_data_helper import OpenML2VWData
         data_id = int(data_source)
-        data = OpenML2VWData(data_id, 'regression') 
+        data = OpenML2VWData(data_id, max_ns_num, 'regression') 
     Y = data.Y
     if vw_format: vw_examples = data.vw_examples
     logger.debug('first data %s', vw_examples[0])
