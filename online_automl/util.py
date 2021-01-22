@@ -1,9 +1,6 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-
-
-from sklearn.preprocessing import PolynomialFeatures
 import itertools
 import logging
 logger = logging.getLogger(__name__)
