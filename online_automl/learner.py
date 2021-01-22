@@ -47,6 +47,7 @@ class TrainableVWTrial:
     model_class = pyvw.vw
     cost_unit = 1.0
     const = 0.1
+    # const = 1.0
     # quartic_config_key = 'q'
     # cubic_config_key = 'cubic'
     interactions_config_key = 'interactions'
@@ -67,7 +68,7 @@ class TrainableVWTrial:
         self.trained_model = TrainableVWTrial.model_class(
             **self._vw_fs_config, **self._fixed_config )
         # TODO: how to get the dim of parameters
-        self._dim = self.get_dim(namespace_feature_dim, feature_set)/5.0
+        self._dim = self.get_dim(namespace_feature_dim, feature_set)#/5.0
         self._resouce_used_attr = 'resource_used'
         self._result = {'config': self._feature_set,}
         self._data_sample_size = 0
@@ -77,7 +78,6 @@ class TrainableVWTrial:
             if k != 'config': self._result[k] = v
         #TODO: why I can not do this? 
         # self._result['config']  = copy.deepcopy(self._feature_set) 
-
     @staticmethod
     def get_dim(namespace_feature_dim, namespace_set):
         #TODO: how to decide the dimensionality of the interaction features?
@@ -105,17 +105,18 @@ class TrainableVWTrial:
         new_loss = (loss_sum - self._result['loss_sum'])/data_sample_size if \
             self._result['loss_sum'] else loss_sum/data_sample_size
         self._result['loss_sum'] = loss_sum
+        if not math.isinf(new_loss): 
+            self._result['loss_square_sum'] += (new_loss - self._result['loss_avg'])**2
         # TODO: what if the loss function in the final evaluation phase is not the same as the one in get_sum_loss?
         self._result['loss_avg'] =  self._result['loss_sum']/self._result['data_sample_count']
-        self._bound_of_loss = max(self._bound_of_loss, new_loss)
-        # logger.debug('bound of loss %s',self._bound_of_loss )
+        self._result['loss_std'] =  TrainableVWTrial.const*np.sqrt(self._result['loss_square_sum']/self._result['data_sample_count'])
+        if not math.isinf(new_loss): self._bound_of_loss = max(abs(self._bound_of_loss), new_loss)
         self._result['cb'] =  self._bound_of_loss*TrainableVWTrial.const*math.sqrt(self._dim/self._result['data_sample_count']) 
-        self._result['comp'] = self._bound_of_loss*TrainableVWTrial.const*math.sqrt(self._dim/self._result['data_sample_count']) 
+        # self._result['cb'] =  TrainableVWTrial.const*self._result['loss_std'] 
         self._result['loss_ucb'] = min(self._result['loss_avg'] + self._result['cb'],
             TrainableVWTrial.LOSS_MAX)
         self._result['loss_lcb'] = max(self._result['loss_avg'] - self._result['cb'], 
             TrainableVWTrial.LOSS_MIN)
-        # logger.debug('result %s', self._result)
 
     def get_result(self):
         return self._result
@@ -154,8 +155,9 @@ class AutoVW:
         model_select_policy: str=None,
         keep_champion_running: int =0,
         keep_incumbent_running: int =0,
+        remove_worse: int=0,
         ):
-        from AML.blendsearch.tune.trial_runner import BaseOnlineTrialRunner, OnlineTrialRunnerwIncumbent
+        from AML.blendsearch.tune.trial_runner import BaseOnlineTrialRunner, OnlineTrialRunnerwIncumbent, OnlineTrialRunnerKeepAll
         from AML.blendsearch.tune.auto_cross_trial_runner import AutoCrossOnlineTrialRunner,AutoCrossOnlineTrialRunnerPlus
         from AML.blendsearch.scheduler.online_scheduler import OnlineSuccessiveDoublingScheduler, \
             SDwChampionScheduler, SDwBestChallengerAndChampionScheduler
@@ -176,7 +178,9 @@ class AutoVW:
             'loss_avg': np.inf, 
             'cb': 1.0,
             'loss_ucb': np.inf, 
-            'loss_lcb': np.inf,}
+            'loss_lcb': np.inf,
+            'loss_square_sum':0,
+            'loss_std': 0}
         self._loss_func = self._get_loss_func_from_config(self._fixed_hp_config)
         # the incumbent_learner is the incumbent vw when the AutoVW is called
         # the incumbent_learner is udpated everytime the learn function is called.
@@ -206,6 +210,7 @@ class AutoVW:
             'min_resource_budget': min_resource_budget,
             'resource_used_attr': "resource_used",
             # 'keep_incumbent_running': keep_incumbent_running
+             'remove_worse':  bool(remove_worse),
             }
 
         ## schedulers
@@ -250,6 +255,20 @@ class AutoVW:
                 scheduler=my_scheduler,
                 **trial_runner_commmon_args
                 )  
+        elif 'KeepAll' in self._trial_runner_name or 'Chambent' in self._trial_runner_name:
+            if keep_champion_running and keep_incumbent_running:
+                logger.info('using both, %s %s', keep_incumbent_running, keep_champion_running)
+                my_scheduler = online_sd_w_bestchallenger_champion_scheduler
+            elif keep_champion_running:
+                logger.info('using champion, %s %s', keep_incumbent_running, keep_champion_running)
+                my_scheduler = online_sd_w_champion_scheduler
+                # my_scheduler = online_sha_scheduler
+            else:
+                my_scheduler = online_sd_scheduler
+            self._trial_runner = OnlineTrialRunnerKeepAll(
+                scheduler=my_scheduler,
+                **trial_runner_commmon_args
+                )  
         else:
             NotImplementedError
             
@@ -287,6 +306,7 @@ class AutoVW:
             self._scheduled_trials = self._trial_runner.schedule_trials_to_run(\
                 self._concurrent_running_budget, self._incumbent_trial_id)
             assert len(self._learner_dic) == 0, 'initial prediction'
+            # if self._trial_runner.reset: self._learner_dic={}
             self._cleanup_old_and_construct_new_model(self._scheduled_trials)
             assert self._trial_runner.champion_trial.trial_id in [t.trial_id for t in self._scheduled_trials]
             assert self._trial_runner.champion_trial.trial_id in self._learner_dic.keys()
@@ -376,6 +396,7 @@ class AutoVW:
         if len(self._learner_dic)!=0:
             for key, trial in self._learner_dic.items():
                 score = trial._result[self._model_selection_metric]
+                logger.debug('%s scores %s %s %s', key, score, trial._result['loss_ucb'], trial._result['loss_avg'])
                 if 'min' == self._model_selection_mode and  score < best_score or \
                     'max' == self._model_selection_mode and score > best_score:
                     best_score = score
@@ -393,6 +414,20 @@ class AutoVW:
                 logger.debug('%s, %s %s',  best_trial._data_sample_size,self._min_resource_budget , best_trial.trial_id)
                 logger.debug('selecting the incumbent trial %s at iter %s',self._incumbent_trial_id, self._iter )
                 return self._learner_dic[self._incumbent_trial_id]
+        elif 'chacha' in self._model_select_policy:
+            champion_id = self._trial_runner.champion_trial_id
+            # assert champion_id in self._learner_dic.keys(), champion_id
+            best_challenger_id = self._trial_runner.best_challenger_running_id
+            if best_challenger_id is None:
+                if  champion_id in self._learner_dic.keys(): return self._learner_dic[champion_id]
+                else: return best_trial
+            else:
+                if champion_id in self._learner_dic.keys() and self._learner_dic[champion_id]._result[self._model_selection_metric] < \
+                    self._learner_dic[best_challenger_id]._result[self._model_selection_metric]:
+                    return self._learner_dic[champion_id]
+                else: 
+                    return self._learner_dic[best_challenger_id]
+            return best_trial
         else:
             logger.info('trial for prediction %s %s', best_trial_id, best_trial._result)
             return best_trial
