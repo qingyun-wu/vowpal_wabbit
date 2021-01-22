@@ -49,7 +49,8 @@ def plot_obj(obj_list, alias='loss', vertical_list=None):
     online_avg_loss = [(obj_list[i+100] -obj_list[i])/100 for i in range(len(obj_list)-100)]
 
 
-def online_learning_loop(iter_num, vw_examples, Y, vw_alg, loss_func, dataset_name, method_name = '', exp_alias='', rerun=False):
+def online_learning_loop(iter_num, vw_examples, Y, vw_alg, loss_func, dataset_name, \
+    method_name = '', exp_alias='', rerun=False, shuffle=False, use_log=False):
     """ Implements the online learning loop.
     Args:
         iter_num (int): The total number of iterations
@@ -67,7 +68,7 @@ def online_learning_loop(iter_num, vw_examples, Y, vw_alg, loss_func, dataset_na
             It is returned for the convenience of visualization.
     """
     # setup the result logger
-    res_file_name = ('-').join( [str(dataset_name), str(exp_alias), str(method_name), str(iter_num)] ) + '.json'
+    res_file_name = ('-').join( [str(dataset_name), str(exp_alias), str(method_name), str(iter_num), str(shuffle), str(use_log)] ) + '.json'
     # res_file_name =dataset_name + '_' + exp_alias + '_' + method_name + '_' + str(iter_num) + '.json'
     res_dir = './result/result_log/oml_' + dataset_name + '/'
     if not os.path.exists(res_dir): os.makedirs(res_dir)
@@ -81,6 +82,7 @@ def online_learning_loop(iter_num, vw_examples, Y, vw_alg, loss_func, dataset_na
         for r in result_log.records():
             loss = r.loss
             loss_list.append(loss)
+        print('---finished loading')
         return loss_list
     else:
         print('rerunning exp....')
@@ -121,17 +123,23 @@ if __name__=='__main__':
     inf_num = np.inf
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--iter_num', metavar='iter_num', type = int, 
-        default=1500, help="total iteration number")
+        default=2000, help="total iteration number")
     parser.add_argument('-policy_budget', '--policy_budget', metavar='policy_budget', 
-    type = int, default= 5, help="budget for the policy that can be evaluated")
+    type = int, default=5, help="budget for the policy that can be evaluated")
     parser.add_argument('-min_resource', '--min_resource', metavar='cost_budget', 
-    type = float, default= 5, help="budget for the computation resources that can be evaluated")
+    type = float, default=50, help="budget for the computation resources that can be evaluated")
     parser.add_argument('-dataset', '--dataset', metavar='dataset', 
     type = str, default= 'simulation', help="get dataset")
     parser.add_argument('-m', '--method_list', dest='method_list', nargs='*' , 
         default= [], help="The method list")
+    parser.add_argument('-ns_num', '--ns_num', metavar='ns_num', type = int, 
+        default=10, help="max name space number")
     parser.add_argument('-rerun', '--force_rerun', action='store_true',
                         help='whether to force rerun.') 
+    parser.add_argument('-shuffle', '--shuffle_data', action='store_true',
+                        help='whether to force rerun.') 
+    parser.add_argument('-log', '--use_log', action='store_true',
+                        help='whether to use_log.') 
 
     args = parser.parse_args()
     task_alias = str(args.dataset) + '_' + str(args.min_resource) 
@@ -140,92 +148,159 @@ if __name__=='__main__':
     from data import get_data
     logging.basicConfig(filename=log_file_name, format='%(asctime)s %(name)s:%(levelname)s:%(message)s',
         filemode="w", level=logging.DEBUG)
-    vw_examples, Y = get_data(args.iter_num, data_source = args.dataset, vw_format=True)
-    namespace_feature_dim = get_ns_feature_dim_from_vw_example(vw_examples) 
-    fixed_hp_config = { 'alg': 'supervised',  'loss_function': 'squared'}  
-    #instantiate several vw learners (as baselines) and an AutoOnlineLearner
-    alg_dic = {}
-    if 'simulation' in args.dataset: alg_dic['oracleVW'] = pyvw.vw(q=['ab','ac','cd'], \
-        **fixed_hp_config)
-    alg_dic['naiveVW'] = pyvw.vw(**fixed_hp_config)
-    auto_alg_common_args = {
-        "min_resource_budget": args.min_resource,
-        "concurrent_running_budget":args.policy_budget,
-        "namespace_feature_dim": namespace_feature_dim, 
-        "fixed_hp_config":fixed_hp_config,
-        'model_select_policy': 'select:threshold_loss_avg',
-        # 'model_select_policy': 'select:threshold_loss_ucb',
-        # 'model_select_policy': 'select:loss_avg',
-        "champion_test_policy" :'loss_avg',
-        }
+    vw_examples, Y = get_data(args.iter_num, data_source = args.dataset, vw_format=True, max_ns_num=args.ns_num, \
+        shuffle=args.shuffle_data, use_log=args.use_log)
 
-    online_doubling_notest = {
-        "trial_runner_name": 'SuccessiveDoubling',
-        "champion_test_policy" :'notest',
-        }
-    fixed = {
-        "trial_runner_name": 'SuccessiveDoubling',
-        "min_resource_budget": np.inf,
-        "champion_test_policy" :'notest',
-        }
-    autocross = {"trial_runner_name": 'autocross',}
-    autocross_plus = {"trial_runner_name": 'autocross+',}
-    online_sdsha_args = {"trial_runner_name": 'SuccessiveDoublingsha',}
-    # out methods
-    online_sd_args = {
-        "trial_runner_name": 'SuccessiveDoubling',
-        'keep_incumbent_running': 0,
-        'keep_champion_running': 0,
-        }
-    online_sd_args_both = {
-        "trial_runner_name": 'SuccessiveDoubling',
-        'keep_incumbent_running': 1,
-        'keep_champion_running': 1,
-        }
+    if vw_examples is not None:
+        namespace_feature_dim = get_ns_feature_dim_from_vw_example(vw_examples) 
+        fixed_hp_config = {'alg': 'supervised',   'loss_function': 'squared'}  
+        #instantiate several vw learners (as baselines) and an AutoOnlineLearner
+        alg_dic = {}
+        if 'simulation' in args.dataset: alg_dic['oracleVW'] = pyvw.vw(q=['ab','ac','cd'], \
+            **fixed_hp_config)
+        alg_dic['naiveVW'] = pyvw.vw(**fixed_hp_config)
+        auto_alg_common_args = {
+            "min_resource_budget": args.min_resource,
+            "concurrent_running_budget":args.policy_budget,
+            "namespace_feature_dim": namespace_feature_dim, 
+            "fixed_hp_config":fixed_hp_config,
+            'model_select_policy': 'select:threshold_loss_avg',
+            # 'model_select_policy': 'select:threshold_loss_ucb',
+            # 'model_select_policy': 'select:loss_avg',
+            # 'model_select_policy': 'chacha',
+            "champion_test_policy" :'loss_avg',
+            #  "champion_test_policy" :'loss_ucb',
+            }
 
-    baseline_auto_methods = [fixed, online_doubling_notest, autocross]
-    auto_alg_args_ist = [online_sd_args_both,]
-    for alg_args in (baseline_auto_methods + auto_alg_args_ist):
-        alg_alias = 'autoVW-' + '-'.join([str(v) for v in alg_args.values()])
-        if 'SuccessiveDoubling-' in alg_alias and 'notest' not in alg_alias: alg_alias='autoVW-SuccessiveDoubling(ours)'
-        if 'inf' in alg_alias: alg_alias='fixed-'+str(args.policy_budget)+'-VW'
-        autovw_args = auto_alg_common_args.copy()
-        autovw_args.update(alg_args)
-        alg_dic[alg_alias] = AutoVW(**autovw_args)
+        online_doubling_notest = {
+            "trial_runner_name": 'SuccessiveDoubling',
+            "champion_test_policy" :'notest',
+            }
+        fixed = {
+            "trial_runner_name": 'SuccessiveDoubling',
+            "min_resource_budget": np.inf,
+            "champion_test_policy" :'notest',
+            }
+        fixed50 = {
+            "trial_runner_name": 'SuccessiveDoubling',
+            "min_resource_budget": np.inf,
+            "champion_test_policy" :'notest',
+            "concurrent_running_budget":50,
+            }
+        autocross = {"trial_runner_name": 'autocross',}
+        autocross_plus = {"trial_runner_name": 'autocross+',}
+        online_sdsha_args = {"trial_runner_name": 'SuccessiveDoublingsha',}
+        # out methods
+        online_sd_args = {
+            "trial_runner_name": 'SuccessiveDoubling',
+            'keep_incumbent_running': 0,
+            'keep_champion_running': 0,
+            }
+        online_sd_args_both = {
+            "trial_runner_name": 'SuccessiveDoubling',
+            'keep_incumbent_running': 1,
+            'keep_champion_running': 1,
+            'remove_worse': 0,
+            }
 
-    if len(args.method_list)!=0: method_list = args.method_list 
-    else: method_list = alg_dic.keys()
-    logger.debug('method_list%s', method_list)
-    for input_method_name in method_list:
-        print(input_method_name, alg_dic.keys())
-        final_name = input_method_name
-        for alg_m in alg_dic.keys():
-            print(input_method_name, alg_m)
-            if input_method_name in alg_m: 
-                final_name = alg_m
-        if final_name in alg_dic.keys():
-            alg_name = final_name
-            alg = alg_dic[alg_name]
-            iter_num = min(args.iter_num, len(Y)-1)
-            time_start = time.time()
-            print('----------running', alg_name, '-----------')
-            if 'naive' in alg_name or 'oracle' in alg_name:
-                exp_alias=''
-            else: exp_alias=str(args.policy_budget)+'_' + str(args.min_resource)
-            cumulative_loss_list = online_learning_loop(iter_num, vw_examples, Y, alg, loss_func=fixed_hp_config['loss_function'],\
-                dataset_name=args.dataset, method_name = alg_name, exp_alias=exp_alias, rerun=args.force_rerun)
-            logger.critical('%ss running time: %s, total iter num is %s', alg_name, time.time() - time_start, iter_num)
-            # generate the plots
-            plot_obj(cumulative_loss_list, alias= alg_name)
-        else:
-            print('alg not exist')
+        online_sd_args_both_re = {
+            "trial_runner_name": 'SuccessiveDoubling',
+            'keep_incumbent_running': 1,
+            'keep_champion_running': 1,
+            'remove_worse': 1,
+            }
 
-    # save the plots
-    alias = 'loss_' + args.dataset + '_' + exp_alias
-    fig_name = PLOT_DIR + alias + '.pdf'
-    plt.savefig(fig_name)
-    
-    
+        online_sd_args_both_keep_all = {
+            "trial_runner_name": 'KeepAllAVG',
+            'keep_incumbent_running': 1,
+            'keep_champion_running': 1,
+            'remove_worse': 1,
+            }
+
+        online_sd_args_both_keep_all_UCB_inf = {
+            "trial_runner_name": 'Chambent',
+            'keep_incumbent_running': 1,
+            'keep_champion_running': 1,
+             "min_resource_budget": np.inf,
+            'remove_worse': 1,
+            "champion_test_policy" :'loss_ucb',
+            'model_select_policy': 'select:threshold_loss_ucb',
+            }
+
+        online_sd_args_both_keep_all_UCB = {
+            "trial_runner_name": 'Chambent',
+            'keep_incumbent_running': 1,
+            'keep_champion_running': 1,
+            'remove_worse': 1,
+            "champion_test_policy" :'loss_ucb',
+            'model_select_policy': 'select:threshold_loss_ucb',
+            }
+
+
+
+        # baseline_auto_methods = [fixed,  ] #online_doubling_notest,autocross
+        baseline_auto_methods = [fixed,] #fixed50
+        # auto_alg_args_ist = [ online_sd_args_both, online_sd_args_both_re, online_sd_args_both_keep_all, online_sd_args_both_keep_all_UCB] #online_sd_args_both_re, online_sd_args_both,
+        # auto_alg_args_ist = [online_sd_args, online_sd_args_both_re, online_sd_args_both_keep_all_UCB] #online_sd_args_both_re, online_sd_args_both,
+        auto_alg_args_ist = [online_sd_args_both_keep_all_UCB,online_sd_args_both_keep_all_UCB_inf] #online_sd_args_both_re, online_sd_args_both,
+        for alg_args in (baseline_auto_methods + auto_alg_args_ist):
+            alg_alias = 'autoVW-' + '-'.join([str(v) for v in alg_args.values()])
+            print('alg_alias', alg_alias)
+            if 'SuccessiveDoubling-' in alg_alias and 'notest' not in alg_alias: 
+                remove_alias = 'remove)' if ('remove_worse' in alg_args.keys() and alg_args['remove_worse']==1) else 'noremove)' 
+                alg_alias='autoVW-SuccessiveDoubling(ours' + remove_alias
+            elif 'inf' in alg_alias: 
+                if 'Chambent' in alg_args['trial_runner_name']:
+                    alg_alias = alg_args['trial_runner_name'] + '-inf'
+                else:
+                    if 'concurrent_running_budget' in alg_args:
+                    # if alg_args['concurrent_running_budget']
+                        alg_alias='fixed-'+str(alg_args['concurrent_running_budget'])+'-VW'
+                    else: alg_alias='fixed-'+str(args.policy_budget)+'-VW'
+            else:
+                alg_alias = alg_args['trial_runner_name'] #+'-'+str(args.min_resource)
+
+            autovw_args = auto_alg_common_args.copy()
+            autovw_args.update(alg_args)
+            alg_dic[alg_alias] = AutoVW(**autovw_args)
+
+        if len(args.method_list)!=0: method_list = args.method_list 
+        else: method_list = alg_dic.keys()
+        logger.debug('method_list%s', method_list)
+        for input_method_name in method_list:
+            print(input_method_name, alg_dic.keys())
+            final_name = input_method_name
+            for alg_m in alg_dic.keys():
+                print(input_method_name, alg_m)
+                if input_method_name=='Chambent' and input_method_name==alg_m:
+                    final_name = alg_m
+                if input_method_name !='Chambent' and input_method_name in alg_m: 
+                    final_name = alg_m
+            print('final_name', final_name)
+            if final_name in alg_dic.keys():
+                alg_name = final_name
+                alg = alg_dic[alg_name]
+                iter_num = min(args.iter_num, len(Y)-1)
+                time_start = time.time()
+                print('----------running', alg_name, '-----------')
+                if 'naive' in alg_name or 'oracle' in alg_name:
+                    exp_alias=''
+                else: exp_alias=str(args.policy_budget)+'_' + str(args.min_resource)
+                cumulative_loss_list = online_learning_loop(iter_num, vw_examples, Y, alg, loss_func=fixed_hp_config['loss_function'],\
+                    dataset_name=args.dataset, method_name = alg_name, exp_alias=exp_alias, rerun=args.force_rerun,
+                    shuffle=args.shuffle_data, use_log=args.use_log)
+                logger.critical('%ss running time: %s, total iter num is %s', alg_name, time.time() - time_start, iter_num)
+                # generate the plots
+                plot_obj(cumulative_loss_list, alias= alg_name)
+            else:
+                print('alg not exist')
+
+        # save the plots
+        alias = 'loss_shuffle_' + str(args.shuffle_data) + '_log_' + str(args.use_log) + \
+            args.dataset + '_' + exp_alias + '_' + str(iter_num)
+        # alias = 'shuffled_data_loss' + args.dataset + '_' + exp_alias
+        fig_name = PLOT_DIR + alias + '.pdf'
+        plt.savefig(fig_name)
 
 ## command lines to run exp
 # conda activate vw
@@ -241,4 +316,11 @@ if __name__=='__main__':
 # python tester.py -i 10000 -min_resource 100 -policy_budget 5  -dataset 688 
 
 # python tester.py -i 3000 -min_resource 10 -policy_budget 5  -dataset simulation
-# python tester.py -i 5000 -min_resource 50 -policy_budget 5  -dataset 688 -m naiveVW oracleVW fixed notest ours  
+# python tester.py -i 5000 -min_resource 50 -policy_budget 5  -dataset 688 -m naiveVW oracleVW fixed notest ours 
+# 
+# $ python tester.py -i 2000 -min_resource 10 -policy_budget 5  -dataset simulation -m oursremove  oursnoremove -rerun 
+# python tester.py -i 2000 -min_resource 10 -policy_budget 5  -dataset simulation -m oursremove  oursnoremove KeepAll -rerun 
+# $ python tester.py -i 2000 -min_resource 10 -policy_budget 5  -dataset 688 -m oursremove  oursnoremove naiveVW oracleVW fixed  -rerun 
+# python tester.py -i 100000 -min_resource 51 -policy_budget 5  -dataset 42545 -m oursremove  oursnoremove naiveVW oracleVW fixed  -rerun 
+# python tester.py -i 100000 -min_resource 51 -policy_budget 5  -dataset 42545 -m oursremove  oursnoremove naiveVW oracleVW fixed  -rerun
+# python tester.py -i 100000 -min_resource 51 -policy_budget 5  -dataset 42545 -m oursremove  oursnoremove naiveVW oracleVW fixed  -rerun
