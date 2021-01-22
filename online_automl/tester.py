@@ -235,14 +235,11 @@ if __name__=='__main__':
             "champion_test_policy" :'loss_ucb',
             'model_select_policy': 'select:threshold_loss_ucb',
             }
-
-
-
         # baseline_auto_methods = [fixed,  ] #online_doubling_notest,autocross
         baseline_auto_methods = [fixed,] #fixed50
         # auto_alg_args_ist = [ online_sd_args_both, online_sd_args_both_re, online_sd_args_both_keep_all, online_sd_args_both_keep_all_UCB] #online_sd_args_both_re, online_sd_args_both,
         # auto_alg_args_ist = [online_sd_args, online_sd_args_both_re, online_sd_args_both_keep_all_UCB] #online_sd_args_both_re, online_sd_args_both,
-        auto_alg_args_ist = [online_sd_args_both_keep_all_UCB,online_sd_args_both_keep_all_UCB_inf] #online_sd_args_both_re, online_sd_args_both,
+        auto_alg_args_ist = [online_sd_args_both_keep_all_UCB,] #online_sd_args_both_keep_all_UCB_inf
         for alg_args in (baseline_auto_methods + auto_alg_args_ist):
             alg_alias = 'autoVW-' + '-'.join([str(v) for v in alg_args.values()])
             print('alg_alias', alg_alias)
