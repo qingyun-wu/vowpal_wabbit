@@ -10,6 +10,7 @@ import pylibvw
 from sklearn.preprocessing import PolynomialFeatures
 import itertools
 import logging
+import random 
 from config import VW_DS_DIR
 from config import OPENML_REGRESSION_LIST_inst_larger_than_5k, \
     OPENML_REGRESSION_LIST_inst_larger_than_10k, OPENML_REGRESSION_LIST_inst_larger_than_100k
@@ -95,18 +96,39 @@ class DataSimulator:
             self.vw_examples.append(raw_vw_example)
 
 
-def get_data(iter_num=None, data_source = 'simulation', vw_format=True):
+def get_data(iter_num=None, data_source = 'simulation', vw_format=True, shuffle=False, use_log=True):
     logging.info('generating data')
     #get data from simulation
     vw_examples = None
     if 'simu' in data_source:
+        # get simulation data
         data = DataSimulator(iter_num)
     else:
+        # get openml data
         from openml_data_helper import OpenML2VWData
         data_id = int(data_source)
-        data = OpenML2VWData(data_id, 'regression') #218
-    # oml_vw_data = oml_data.load_vw_dataset(1595, VW_DS_DIR, True)
+        data = OpenML2VWData(data_id, 'regression') 
     Y = data.Y
     if vw_format: vw_examples = data.vw_examples
     logger.debug('first data %s', vw_examples[0])
+    if 'simu' in data_source:
+        return vw_examples, Y
+    # do data shuffling or log transformation for oml data when needed
+    if shuffle:
+        random.seed(54321)
+        random.shuffle(vw_examples)
+    
+    # do log transformation
+    unique_y = set(Y)
+    all_y_positive = all(i>0 for i in unique_y)
+    if all_y_positive and (max(unique_y)>=100) and use_log:
+        log_vw_examples = []
+        for v in vw_examples:
+            org_y = v.split('|')[0]
+            y = float(v.split('|')[0])
+            log_y = np.log(y)
+            log_vw = v.replace(org_y + '|', str(log_y) + ' |')
+            log_vw_examples.append(log_vw)
+        if log_vw_examples: return log_vw_examples, Y
     return vw_examples, Y
+
