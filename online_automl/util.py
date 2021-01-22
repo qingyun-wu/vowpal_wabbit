@@ -14,8 +14,13 @@ def get_ns_feature_dim_from_vw_example(vw_examples):
     for i in range(1, len(data)):
         logger.debug('name space feature dimension%s', data)
         if ':' in data[i]:
-            ns, feature = data[i].split(' ')
-            feature_dim = len(feature.split(':'))-1
+            xx= data[i].split(' ')
+            print(xx, data[i])
+            ns = xx[0]
+            feature = xx[1:]
+            # ns, feature = data[i].split(' ')
+            # feature_dim = len(feature.split(':'))-1
+            feature_dim = len(feature)
         else:
             data_split = data[i].split(' ')
             ns = data_split[0]
