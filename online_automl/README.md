@@ -4,6 +4,7 @@ pip install vowpalwabbit
 pip install ray[tune]
 
 git submodule add https://github.com/sonichi/AML.git
+(https://github.com/sonichi/AML/tree/async)
 
 pip install openml
 
