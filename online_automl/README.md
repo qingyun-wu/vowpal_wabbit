@@ -1,12 +1,16 @@
 # Packages to intall 
+
 pip install vowpalwabbit
 
 pip install ray[tune]
 
-git submodule add https://github.com/sonichi/AML.git
-(https://github.com/sonichi/AML/tree/async)
-
 pip install openml
+
+pip install matplotlib
+
+cd online_automl/
+git submodule add https://github.com/sonichi/AML.git
+(switch to this branch: https://github.com/sonichi/AML/tree/async)
 
 
 # Experiment running
@@ -51,7 +55,6 @@ The name of both the .json and .pdf files are generated based on an alias which 
 - VW name space related changes: 
 - Better visualization
 - ConfigOracle: in file: AML/BlendSearch/online_searcher.py
-
 
 ```
 self._champion_frontier_config_list = self._generate_new_space(self._champion_trial.config, \
