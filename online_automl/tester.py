@@ -143,6 +143,8 @@ if __name__=='__main__':
 
     args = parser.parse_args()
     task_alias = str(args.dataset) + '_' + str(args.min_resource) 
+    if not os.path.exists(LOG_DIR): os.makedirs(LOG_DIR)
+    if not os.path.exists(PLOT_DIR): os.makedirs(PLOT_DIR)
     log_file_name = LOG_DIR + task_alias + '.log'
     #Generate data
     from data import get_data
