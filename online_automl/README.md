@@ -3,6 +3,7 @@ pip install vowpalwabbit
 
 pip install ray[tune]
 
+git rm -f AML
 git submodule add https://github.com/sonichi/AML.git
 (https://github.com/sonichi/AML/tree/async)
 
