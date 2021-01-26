@@ -4,7 +4,7 @@ from learner import AutoVW
 from vowpalwabbit import pyvw
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error, mean_absolute_error
-from config import LOG_DIR, PLOT_DIR
+from config import LOG_DIR, PLOT_DIR, WARMSTART_NUM
 import logging
 import time 
 import os
@@ -12,18 +12,12 @@ from os import path
 import matplotlib.pyplot as plt
 from result_log import ResultLogReader,ResultLogWriter
 from util import get_y_from_vw_example, get_ns_feature_dim_from_vw_example
-LARGE_NUM = 1000000
 logger = logging.getLogger(__name__)
 # TODO:
 # 2. add config info in file name; 3. setup; 4. how to re-run a particular method
 def plot_obj_cumulative(obj_list, alias='reward', vertical_list=None):
     avg_list = [obj_list[i]/i for i in range(1, len(obj_list))]
-    online_avg_loss = [(obj_list[i+100] -obj_list[i])/100 for i in range(len(obj_list)-100)]
-    # plt.plot(range(len(online_avg_loss)), online_avg_loss, label = alias)
-    # plt.plot(range(len(obj_list)), obj_list, label = alias)
-    total_obs = len(avg_list)
-    warm_starting_point =  int(total_obs*0.01) #100 #
-    plt.plot(range(warm_starting_point, len(avg_list)), avg_list[warm_starting_point:], label = alias)
+    plt.plot(range(0, len(avg_list)), avg_list[0:], label = alias)
     plt.xlabel('# of interactions', fontsize=14)
     plt.ylabel('average loss', fontsize=14)
     plt.yscale('log')
@@ -37,7 +31,7 @@ def plot_obj_cumulative(obj_list, alias='reward', vertical_list=None):
 def plot_obj(obj_list, alias='loss', vertical_list=None):
     avg_list = [sum(obj_list[:i])/i for i in range(1, len(obj_list))]
     total_obs = len(avg_list)
-    warm_starting_point =  int(total_obs*0.01) #100 #
+    warm_starting_point =  WARMSTART_NUM#  int(total_obs*0.01) #100 #
     plt.plot(range(warm_starting_point, len(avg_list)), avg_list[warm_starting_point:], label = alias)
     plt.xlabel('# of interactions', fontsize=14)
     plt.ylabel('average ' + alias, fontsize=14)
@@ -166,20 +160,26 @@ if __name__=='__main__':
             "concurrent_running_budget":args.policy_budget,
             "namespace_feature_dim": namespace_feature_dim, 
             "fixed_hp_config":fixed_hp_config,
-            'model_select_policy': 'select:threshold_loss_avg',
-            # 'model_select_policy': 'select:threshold_loss_ucb',
-            # 'model_select_policy': 'select:loss_avg',
+            # 'model_select_policy': 'select:threshold_loss_avg',
+            'model_select_policy': 'select:threshold_loss_ucb',
+            # 'model_select_policy': 'select:loss_ucb',
+            # 'model_select_policy': 'select:,
             # 'model_select_policy': 'chacha',
-            "champion_test_policy" :'loss_avg',
-            #  "champion_test_policy" :'loss_ucb',
+            # "champion_test_policy" :'loss_avg',
+             "champion_test_policy" :'loss_ucb',
             }
 
         online_doubling_notest = {
             "trial_runner_name": 'SuccessiveDoubling',
             "champion_test_policy" :'notest',
             }
+        # fixed = {
+        #     "trial_runner_name": 'SuccessiveDoubling',
+        #     "min_resource_budget": np.inf,
+        #     "champion_test_policy" :'notest',
+        #     }
         fixed = {
-            "trial_runner_name": 'SuccessiveDoubling',
+            "trial_runner_name": 'Chambent',
             "min_resource_budget": np.inf,
             "champion_test_policy" :'notest',
             }
@@ -192,32 +192,6 @@ if __name__=='__main__':
         autocross = {"trial_runner_name": 'autocross',}
         autocross_plus = {"trial_runner_name": 'autocross+',}
         online_sdsha_args = {"trial_runner_name": 'SuccessiveDoublingsha',}
-        # out methods
-        online_sd_args = {
-            "trial_runner_name": 'SuccessiveDoubling',
-            'keep_incumbent_running': 0,
-            'keep_champion_running': 0,
-            }
-        online_sd_args_both = {
-            "trial_runner_name": 'SuccessiveDoubling',
-            'keep_incumbent_running': 1,
-            'keep_champion_running': 1,
-            'remove_worse': 0,
-            }
-
-        online_sd_args_both_re = {
-            "trial_runner_name": 'SuccessiveDoubling',
-            'keep_incumbent_running': 1,
-            'keep_champion_running': 1,
-            'remove_worse': 1,
-            }
-
-        online_sd_args_both_keep_all = {
-            "trial_runner_name": 'KeepAllAVG',
-            'keep_incumbent_running': 1,
-            'keep_champion_running': 1,
-            'remove_worse': 1,
-            }
 
         online_sd_args_both_keep_all_UCB_inf = {
             "trial_runner_name": 'Chambent',
@@ -229,40 +203,51 @@ if __name__=='__main__':
             'model_select_policy': 'select:threshold_loss_ucb',
             }
 
-        online_sd_args_both_keep_all_UCB = {
-            "trial_runner_name": 'Chambent',
+        # Chambent = {
+        #     "trial_runner_name": 'Chambent-Doubling',
+        #     'keep_incumbent_running': 1,
+        #     'keep_champion_running': 1,
+        #     'remove_worse': 0,
+        #     "champion_test_policy" :'loss_ucb',
+        #     'model_select_policy': 'select:threshold_loss_avg',
+        #     }
+        Chambent = {
+            "trial_runner_name": 'Chambent-Doubling',
             'keep_incumbent_running': 1,
             'keep_champion_running': 1,
             'remove_worse': 1,
-            "champion_test_policy" :'loss_ucb',
-            'model_select_policy': 'select:threshold_loss_ucb',
+            # "champion_test_policy" :'loss_ucb',
+            # 'model_select_policy': 'select:threshold_loss_ucb',
+            }
+
+        Chambent_hybrid = {
+            "trial_runner_name": 'Chambent-Hybrid',
+            'keep_incumbent_running': 1,
+            'keep_champion_running': 1,
+            'remove_worse': 1,
+            # "champion_test_policy" :'loss_ucb',
+            # 'model_select_policy': 'select:threshold_loss_ucb',
+            }
+        Chambent_keep_all_running = {
+            "trial_runner_name": 'Chambent-Inf',
+            'keep_all_running': 1,
+            'remove_worse': 1,
             }
         # baseline_auto_methods = [fixed,  ] #online_doubling_notest,autocross
         baseline_auto_methods = [fixed,] #fixed50
         # auto_alg_args_ist = [ online_sd_args_both, online_sd_args_both_re, online_sd_args_both_keep_all, online_sd_args_both_keep_all_UCB] #online_sd_args_both_re, online_sd_args_both,
         # auto_alg_args_ist = [online_sd_args, online_sd_args_both_re, online_sd_args_both_keep_all_UCB] #online_sd_args_both_re, online_sd_args_both,
-        auto_alg_args_ist = [online_sd_args_both_keep_all_UCB,] #online_sd_args_both_keep_all_UCB_inf
+        auto_alg_args_ist = [Chambent, Chambent_hybrid, Chambent_keep_all_running]#Chambent_keep_all_running, Chambent_test, Chambent_keep_all_running #Chambent_keep_all_running #online_sd_args_both_keep_all_UCB_inf
         for alg_args in (baseline_auto_methods + auto_alg_args_ist):
-            alg_alias = 'autoVW-' + '-'.join([str(v) for v in alg_args.values()])
-            print('alg_alias', alg_alias)
-            if 'SuccessiveDoubling-' in alg_alias and 'notest' not in alg_alias: 
-                remove_alias = 'remove)' if ('remove_worse' in alg_args.keys() and alg_args['remove_worse']==1) else 'noremove)' 
-                alg_alias='autoVW-SuccessiveDoubling(ours' + remove_alias
-            elif 'inf' in alg_alias: 
-                if 'Chambent' in alg_args['trial_runner_name']:
-                    alg_alias = alg_args['trial_runner_name'] + '-inf'
-                else:
-                    if 'concurrent_running_budget' in alg_args:
-                    # if alg_args['concurrent_running_budget']
-                        alg_alias='fixed-'+str(alg_args['concurrent_running_budget'])+'-VW'
-                    else: alg_alias='fixed-'+str(args.policy_budget)+'-VW'
-            else:
-                alg_alias = alg_args['trial_runner_name'] #+'-'+str(args.min_resource)
-
             autovw_args = auto_alg_common_args.copy()
             autovw_args.update(alg_args)
+            if np.isinf(autovw_args['min_resource_budget']): 
+                if 'concurrent_running_budget' in alg_args:
+                    alg_alias='fixed-'+str(alg_args['concurrent_running_budget'])+'-VW'
+                else: alg_alias='fixed-'+str(args.policy_budget)+'-VW'
+            else:
+                alg_alias = alg_args['trial_runner_name'] #+'-'+str(args.min_resource)
             alg_dic[alg_alias] = AutoVW(**autovw_args)
-
         if len(args.method_list)!=0: method_list = args.method_list 
         else: method_list = alg_dic.keys()
         logger.debug('method_list%s', method_list)
@@ -295,7 +280,7 @@ if __name__=='__main__':
                 print('alg not exist')
 
         # save the plots
-        alias = 'loss_shuffle_' + str(args.shuffle_data) + '_log_' + str(args.use_log) + \
+        alias = 'loss_' + 'ns_' + str(args.ns_num) + '_shuffle_' + str(args.shuffle_data) + '_log_' + str(args.use_log) + \
             args.dataset + '_' + exp_alias + '_' + str(iter_num)
         # alias = 'shuffled_data_loss' + args.dataset + '_' + exp_alias
         fig_name = PLOT_DIR + alias + '.pdf'
@@ -306,20 +291,7 @@ if __name__=='__main__':
 # python tester.py -i 10000 -c 200 >res.txt
 
 
-# -m naiveVW oracleVW fixed notest ours 
+# -m naiveVW oracleVW fixed Chambent-Doubling Chambent-Inf
 
-# python tester.py  -i 10000 -c 200 -d 572 >res.txt
-# python tester.py -i 10000 -c 200 -d 218  >res.txt
-# python tester.py -i 1000 -c 200 -d simulation  >res.txt
-# python tester.py -i 1000 -min_resource 200 -policy_budget 5  -dataset simulation
-# python tester.py -i 10000 -min_resource 100 -policy_budget 5  -dataset 688 
-
-# python tester.py -i 3000 -min_resource 10 -policy_budget 5  -dataset simulation
-# python tester.py -i 5000 -min_resource 50 -policy_budget 5  -dataset 688 -m naiveVW oracleVW fixed notest ours 
-# 
-# $ python tester.py -i 2000 -min_resource 10 -policy_budget 5  -dataset simulation -m oursremove  oursnoremove -rerun 
-# python tester.py -i 2000 -min_resource 10 -policy_budget 5  -dataset simulation -m oursremove  oursnoremove KeepAll -rerun 
-# $ python tester.py -i 2000 -min_resource 10 -policy_budget 5  -dataset 688 -m oursremove  oursnoremove naiveVW oracleVW fixed  -rerun 
-# python tester.py -i 100000 -min_resource 51 -policy_budget 5  -dataset 42545 -m oursremove  oursnoremove naiveVW oracleVW fixed  -rerun 
-# python tester.py -i 100000 -min_resource 51 -policy_budget 5  -dataset 42545 -m oursremove  oursnoremove naiveVW oracleVW fixed  -rerun
-# python tester.py -i 100000 -min_resource 51 -policy_budget 5  -dataset 42545 -m oursremove  oursnoremove naiveVW oracleVW fixed  -rerun
+# python tester.py -i 1000 -min_resource 20 -policy_budget 5  -dataset simulation -m Chambent-SuccessiveDoubling Chambent-Inf -rerun
+# python tester.py -i 10000 -min_resource 10 -policy_budget 5 -dataset 344  -rerun  -log -m Chambent-SuccessiveDoubling Chambent-Inf
