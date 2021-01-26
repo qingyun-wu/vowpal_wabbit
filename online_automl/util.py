@@ -22,6 +22,7 @@ def get_ns_feature_dim_from_vw_example(vw_examples):
             data_split = data[i].split(' ')
             ns = data_split[0]
             feature_dim = len(data_split)-1
+            if len(data_split[-1])==0: feature_dim -=1
         if len(ns) ==1:
             ns_feature_dim[ns] = feature_dim
     logger.debug('name space feature dimension%s', ns_feature_dim)
