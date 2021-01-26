@@ -87,19 +87,21 @@ if __name__=='__main__':
         dataset_list = get_full_ds_list(VW_DS_DIR)
         # only keep the ones without missing values
         print(dataset_list)
-        d_significant = [41065, 41506, 42225, 42729, 41540, 41539, 42496, 1203, 1206, 215, 344, 573, 5648, 1191, 1193, 1196, 537, 564]
+        d_significant = [41065, 41506, 42225, 42729, 41540, 41539, 42496, 1201, 1203, 1206, 1208, 215, 344, 5648, 1191, 1193, 1196, 537, 564, 4549]
         d_large = [1591,1592,1594,1583,1584,1585,1586,1587,1588,1581,1577,1428,1429,4545,41065,296,42708,1578,1206,1424,1430,1208,1426,1427,1593,1425,1582,42705,4549,42571,201,42724]
-        dataset_list =[d for d in dataset_list if int(d) in OPENML_REGRESSION_LIST_inst_larger_than_10k_regression+d_large]
+        dataset_list =[d for d in dataset_list if int(d) in set(OPENML_REGRESSION_LIST_inst_larger_than_10k_regression+d_large+d_significant)]
         dataset_list =[d for d in dataset_list if int(d) not in not_regression]
         if args.focused:
             dataset_list =[d for d in dataset_list if int(d)  in d_significant]
-        print('da ist', dataset_list)
+        print('da ist', dataset_list, len(dataset_list))
         failed_datasets = [d for d in OPENML_REGRESSION_LIST_inst_larger_than_10k_regression if str(d) not in dataset_list]
         print('failed', failed_datasets)
-        # d_large = [1591,1592,1594,1583,1584,1585,1586,1587,1588,1581,1577,1428,1429,4545,41065,296,42708,1578,1206,1424,1430,1208,1426,1427,1593,1425,1582,42705,4549,42571,201,42724]
-        # full_list = get_full_ds_list(VW_DS_DIR)
+        d_large = [1591,1592,1594,1583,1584,1585,1586,1587,1588,1581,1577,1428,1429,4545,41065,296,42708,1578,1206,1424,1430,1208,1426,1427,1593,1425,1582,42705,4549,42571,201,42724]
+        full_list = get_full_ds_list(VW_DS_DIR)
         # dataset_list =[d for d in full_list if int(d) in d_large]
-        print(dataset_list)
+        print(dataset_list, 'number', len(dataset_list))
+        dataset_list = set(dataset_list)
+        print(dataset_list, 'number', len(dataset_list))
     for d in dataset_list:
         alias_prob =  '-dataset ' + str(d) 
         alias_rerun = '-rerun' if args.force_rerun else ''
