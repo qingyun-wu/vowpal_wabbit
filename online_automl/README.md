@@ -56,6 +56,7 @@ The name of both the .json and .pdf files are generated based on an alias which 
 
 #  Result visualization
 - Step 1: download the result to  ./result/result_log/ (note: since some of the results files are quite large, I only included 4 datasets as examples, which should be enough to get the scripts running). 
+(Link to download results: https://microsoft.sharepoint.com/:u:/t/onlineAML/EZ53WUtstgZFhNGGg9BXbaoBevp_Fnaiv_RNhZwSfD_rrg?e=YVowe1)
 
 - Step 2: interpretation of the result .json file
 1. ‘y_pred’ y prediction
