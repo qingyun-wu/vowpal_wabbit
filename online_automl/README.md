@@ -53,18 +53,30 @@ After running the exp, several files will be genearted
 
 The name of both the .json and .pdf files are generated based on an alias which reflects the id of the exp. When running an exp that has already ran. It will directly load result from existing file unless the ```-rerun``` option is enabled.
 
-# TODO
-- Some part of the code is in an private repo, need to add Marco such that Macro can add the repo as submodule
 
-- VW name space related changes: 
-- Better visualization
-- ConfigOracle: in file: AML/BlendSearch/online_searcher.py
+#  Result visualization
+- Step 1: download the result to  ./result/result_log/ (note: since some of the results files are quite large, I only included 4 datasets as examples, which should be enough to get the scripts running). 
+
+- Step 2: interpretation of the result .json file
+1. ‘y_pred’ y prediction
+2. ‘y’: ground truth y
+3.  ‘loss’ loss field stores the instantaneous loss (mean square error)
+
+So if we want to visualize the running average loss (mean square error), we just need to go through the results and get the running average over the ‘loss’ filed. 
+
+
+If we want to see other types of loss metric, may need to calculate from ‘y_predict’ and ‘y’
+
+- Step 3: methods to compare with.
+
+File signatures of different methods:  naiveVW     fixed-5     Chambent-Hybrid
+
+Step 4: scripts to parse the names and settings of experiment (based on which corresponding results will be loaded)
+
+This command will generate a figure that shows average loss over time for data set 344
 
 ```
-self._champion_frontier_config_list = self._generate_new_space(self._champion_trial.config, \
-                1, order=2) + [self._champion_trial.config] # config_id -> config
-```
+python tester.py -i 20000 -log -min_resource 100 -policy_budget 5 -dataset 344  -m fixed-5 Chambent-Hybrid naiveVW  -plot_only
 
 ```
-def _generate_new_space(self, champion_config, interaction_num_to_add, order=2) -> list 
-```
+
