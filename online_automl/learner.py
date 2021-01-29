@@ -110,6 +110,7 @@ class TrainableVWTrial:
         # TODO: what if the loss function in the final evaluation phase is not the same as the one in get_sum_loss?
         self._result['loss_avg'] =  self._result['loss_sum']/self._result['data_sample_count']
         if not math.isinf(loss_bound): self._bound_of_loss = loss_bound
+        # self._result['cb'] = self._bound_of_loss*math.sqrt((self._dim+np.log(self._result['data_sample_count']/TrainableVWTrial.prob_delta))/self._result['data_sample_count']) 
         self._result['cb'] = self._bound_of_loss*math.sqrt((self._dim+np.log(1.0/TrainableVWTrial.prob_delta))/self._result['data_sample_count']) 
         self._result['loss_ucb'] = min(self._result['loss_avg'] + self._result['cb'],
             TrainableVWTrial.LOSS_MAX)
@@ -155,8 +156,10 @@ class AutoVW:
         keep_incumbent_running: int =0,
         keep_all_running: int=0,
         remove_worse: int=0,
+        config_oracle_random_seed: int=None
         ):
-        from AML.blendsearch.tune.trial_runner import BaseOnlineTrialRunner, OnlineTrialRunnerwIncumbent, OnlineTrialRunnerKeepAll
+        from AML.blendsearch.tune.trial_runner import BaseOnlineTrialRunner, OnlineTrialRunnerwIncumbent, OnlineTrialRunnerKeepAll, \
+            OnlineTrialRunnerKeepAll_noreset
         from AML.blendsearch.tune.auto_cross_trial_runner import AutoCrossOnlineTrialRunner,AutoCrossOnlineTrialRunnerPlus
         from AML.blendsearch.scheduler.online_scheduler import OnlineSuccessiveDoublingScheduler, \
             SDwChampionScheduler, SDwBestChallengerAndChampionScheduler, OnlineScheduler,SDwIncumbentAndChampionScheduler, \
@@ -198,7 +201,8 @@ class AutoVW:
             mode='min',
             init_feature_set = set(namespace_feature_dim.keys()),
             init_result = self._init_result.copy(),
-            min_resource_budget = min_resource_budget)    
+            min_resource_budget = min_resource_budget,
+            config_oracle_random_seed=config_oracle_random_seed)    
 
         scheduler_common_args = {
             'resource_used_attr': "resource_used",
@@ -256,7 +260,9 @@ class AutoVW:
                 **trial_runner_commmon_args
                 )  
         elif 'Chambent' in self._trial_runner_name:
-            if 'hybrid' in self._trial_runner_name.lower():
+            if 'hybrid' in self._trial_runner_name.lower() \
+                or 'test' in self._trial_runner_name.lower() or \
+                'noreset' in self._trial_runner_name.lower() :
                 my_scheduler = HybridsScheduler(**scheduler_common_args)
                 logger.debug('using hybrid scheduler')
             elif keep_champion_running and keep_incumbent_running:
@@ -277,9 +283,14 @@ class AutoVW:
             if 'always' in self._trial_runner_name:
                 print('use FIFO scheduler')
                 my_scheduler = online_always_running_scheduler
-            self._trial_runner = OnlineTrialRunnerKeepAll(
+            if 'noreset' in self._trial_runner_name.lower():
+                self._trial_runner = OnlineTrialRunnerKeepAll_noreset(
                 scheduler=my_scheduler,
                 **trial_runner_commmon_args)  
+            else:
+                self._trial_runner = OnlineTrialRunnerKeepAll(
+                    scheduler=my_scheduler,
+                    **trial_runner_commmon_args)  
         else:
             NotImplementedError
             
