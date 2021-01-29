@@ -4,7 +4,8 @@ from learner import AutoVW
 from vowpalwabbit import pyvw
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error, mean_absolute_error
-from config import LOG_DIR, PLOT_DIR, RES_LOG_DIR, WARMSTART_NUM
+from config import LOG_DIR, PLOT_DIR, MAIN_RES_LOG_DIR, WARMSTART_NUM, MIN_RES_CONST, \
+    ICML_DATASET_10NS, AB_RES_LOG_DIR, ORACLE_RANDOM_SEED
 import logging
 import time 
 import os
@@ -42,6 +43,69 @@ def plot_obj(obj_list, alias='loss', vertical_list=None):
         for v in vertical_list:
             plt.axvline(x=v)
     online_avg_loss = [(obj_list[i+100] -obj_list[i])/100 for i in range(len(obj_list)-100)]
+
+def plot_normalized_scores(res_dic, alias='', name_0='naive', name_1='fixed-50'):
+    # print 
+    dataset_normalized_scores = {}
+    print('res_dic', res_dic)
+    for dataset, res in res_dic.items():
+        # generate loss
+        loss_0, loss_1 = None, None
+        for alg, value in res.items():
+            if name_0 in alg: loss_0 = res[alg] 
+            if name_1 in alg: loss_1 = res[alg] 
+        normalized_loss = {}
+        if loss_0 is not None and loss_1 is not None and loss_0 != loss_1:
+            for alg in res:
+                normalized_loss[alg] = (loss_0-res[alg])/float( loss_0-loss_1)
+                normalized_loss[alg] = float('{:.2f}'.format(float(normalized_loss[alg])))
+                
+                
+        dataset_normalized_scores[dataset] = normalized_loss
+    for dataset, norm_scores in dataset_normalized_scores.items():
+        print(dataset, norm_scores)
+
+
+    all_labels = res_dic.keys()
+    m1_name = 'Chambent-Hybrid'
+    m2_name = 'fixed-5-VW'
+    labels = [k for k in res_dic.keys() if \
+        (m1_name in dataset_normalized_scores[k] and m2_name in dataset_normalized_scores[k])]
+    
+    
+    res_1 = [dataset_normalized_scores[k][m1_name] for k in labels if m1_name in dataset_normalized_scores[k]] 
+    res_2 = [dataset_normalized_scores[k][m2_name] for k in labels if m2_name in dataset_normalized_scores[k]]  
+    print(res_2, len(res_2), res_1, len(res_1))
+    x = np.arange(len(labels))  # the label locations
+    width = 0.3  # the width of the bars
+
+    fig, ax = plt.subplots()
+    rects1 = ax.bar(x - width/2, res_1, width, label=m1_name.strip('-Hybrid'))
+    rects2 = ax.bar(x + width/2, res_2, width, label=m2_name)
+
+    # Add some text for labels, title and custom x-axis tick labels, etc.
+    ax.set_ylabel('Normalized scores (naiveVWLoss -Loss)/(naiveVWLoss-OracleVWLoss)')
+    ax.set_title('Normalzied Scores (naiveVW=0, OracleVW=1)')
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels)
+    ax.set_ylim(-0.1, 2.0)
+    ax.legend()
+    def autolabel(rects):
+        """Attach a text label above each bar in *rects*, displaying its height."""
+        for rect in rects:
+            height = rect.get_height()
+            ax.annotate('{}'.format(height),
+                        xy=(rect.get_x() + rect.get_width() / 2, height),
+                        xytext=(0, 3),  # 3 points vertical offset
+                        textcoords="offset points",
+                        ha='center', va='bottom')
+
+    # autolabel(rects1)
+    # autolabel(rects2)
+    # fig.tight_layout()
+    plt.axhline(y=1.0, color='r', linestyle='--')
+    fig_name = PLOT_DIR  + 'bar_plot_' + alias+ '.pdf'
+    plt.savefig(fig_name)
 
 def online_learning_loop(iter_num, vw_examples, Y, vw_alg, loss_func, \
     method_name = '', result_file_address='./res.json'):
@@ -98,34 +162,47 @@ if __name__=='__main__':
         default=2000, help="total iteration number")
     parser.add_argument('-policy_budget', '--policy_budget', metavar='policy_budget', 
     type = int, default=5, help="budget for the policy that can be evaluated")
-    parser.add_argument('-min_resource', '--min_resource', metavar='cost_budget', 
-    type = float, default=50, help="budget for the computation resources that can be evaluated")
     parser.add_argument('-d', '--dataset_list', metavar='dataset_list', nargs='*' , 
     type = str, default= ['simulation' ] , help="get dataset")
     parser.add_argument('-m', '--method_list', dest='method_list', nargs='*' , 
         default= [], help="The method list")
     parser.add_argument('-ns_num', '--ns_num', metavar='ns_num', type = int, 
         default=10, help="max name space number")
+    parser.add_argument('-seed', '--config_oracle_random_seed', metavar='config_oracle_random_seed', type = int, 
+        default=None, help="set config_oracle_random_seed")
     parser.add_argument('-rerun', '--force_rerun', action='store_true',
                         help='whether to force rerun.') 
-    parser.add_argument('-plot_only', '--plot_only', action='store_true',
+    parser.add_argument('-no_rerun', '--force_no_rerun', action='store_true',
+                        help='whether to force no rerun.')
+    parser.add_argument('-bar_plot_only', '--bar_plot_only', action='store_true',
                         help='whether to only generate plot.') 
     parser.add_argument('-shuffle', '--shuffle_data', action='store_true',
                         help='whether to force rerun.') 
+    parser.add_argument('-ablation', '--ablation', action='store_true',
+                        help='whether to ablation.') 
     parser.add_argument('-log', '--use_log', action='store_true',
                         help='whether to use_log.') 
 
     args = parser.parse_args()
-    for dataset in args.dataset_list:
-        task_alias = str(dataset) + '_' + str(args.min_resource) 
-        if not os.path.exists(LOG_DIR): os.makedirs(LOG_DIR)
-        if not os.path.exists(PLOT_DIR): os.makedirs(PLOT_DIR)
-        if not os.path.exists(RES_LOG_DIR): os.makedirs(RES_LOG_DIR)
+    all_dataset_result = {}
+    print('args.dataset_list',args.dataset_list)
+    if 'all' in args.dataset_list:
+        dataset_list = ICML_DATASET_10NS
+    else: dataset_list = args.dataset_list
+    print('datasets', dataset_list)
+    RES_LOG_DIR = AB_RES_LOG_DIR if args.ablation else MAIN_RES_LOG_DIR
+    if not os.path.exists(LOG_DIR): os.makedirs(LOG_DIR)
+    if not os.path.exists(PLOT_DIR): os.makedirs(PLOT_DIR)
+    if not os.path.exists(RES_LOG_DIR): os.makedirs(RES_LOG_DIR)
+    for dataset in dataset_list:
+        dataset = str(dataset)
+        task_alias = str(dataset) 
+       
         log_file_name = LOG_DIR + task_alias + '.log'
 
-        if args.plot_only: assert args.force_rerun == False
+        if args.bar_plot_only: assert args.force_rerun == False
         ####get data 
-        if args.plot_only: 
+        if args.bar_plot_only: 
             vw_examples, Y, namespace_feature_dim = None, None, {'d':1}
         else:
             ###Get data if rerun exp
@@ -135,7 +212,7 @@ if __name__=='__main__':
             vw_examples, Y = get_data(args.iter_num, data_source = dataset, vw_format=True, max_ns_num=args.ns_num, \
                 shuffle=args.shuffle_data, use_log=args.use_log)
             namespace_feature_dim = get_ns_feature_dim_from_vw_example(vw_examples) 
-
+        feature_dim = sum([d for d in namespace_feature_dim.values()])
         # setup alg configs
         fixed_hp_config = {'alg': 'supervised', 'loss_function': 'squared'}  
 
@@ -147,7 +224,7 @@ if __name__=='__main__':
 
         ## setup configs for other autoVW methods
         auto_alg_common_args = {
-            "min_resource_budget": args.min_resource,
+            "min_resource_budget": feature_dim*MIN_RES_CONST, # args.min_resource,
             "concurrent_running_budget":args.policy_budget,
             "namespace_feature_dim": namespace_feature_dim if namespace_feature_dim else None, 
             "fixed_hp_config":fixed_hp_config,
@@ -156,6 +233,7 @@ if __name__=='__main__':
             # 'model_select_policy': 'select:loss_ucb',
             # "champion_test_policy" :'loss_avg',
             "champion_test_policy" :'loss_ucb',
+            'config_oracle_random_seed': args.config_oracle_random_seed,
             }
 
         fixed_b_vw = {
@@ -182,8 +260,16 @@ if __name__=='__main__':
             "trial_runner_name": 'Chambent-Hybrid',
             'remove_worse': 1,
             }
+        Chambent_test = {
+            "trial_runner_name": 'Chambent-Test',
+            'remove_worse': 1,
+            }
         Chambent_noreset = {
             "trial_runner_name": 'Chambent-Noreset',
+            'remove_worse': 1,
+            }
+        Chambent_pause = {
+            "trial_runner_name": 'Chambent-Pause',
             'remove_worse': 1,
             }
         Chambent_Inf = {
@@ -191,9 +277,9 @@ if __name__=='__main__':
             'keep_all_running': 1,
             'remove_worse': 1,
             }
-        baseline_auto_methods = [fixed_b_vw,fixed_b_vw_50] #autocross
-        auto_alg_args_ist = [Chambent_hybrid, ] #[Chambent_Doubling, Chambent_hybrid, Chambent_Inf] Chambent_test
-    
+        baseline_auto_methods = [fixed_b_vw, fixed_b_vw_50] #autocross
+        auto_alg_args_ist = [Chambent_hybrid,Chambent_noreset, Chambent_pause ] # Chambent_test [Chambent_Doubling, Chambent_hybrid, Chambent_Inf] Chambent_test
+        # auto_alg_args_ist_ablation = [Chambent_noreset, Chambent_test]
         for alg_args in (baseline_auto_methods + auto_alg_args_ist):
             autovw_args = auto_alg_common_args.copy()
             autovw_args.update(alg_args)
@@ -207,7 +293,8 @@ if __name__=='__main__':
         if len(args.method_list)!=0: method_list = args.method_list 
         else: method_list = alg_dic.keys()
         logger.debug('method_list%s', method_list)
-
+        
+        method_results = {} #key: method name, value: result 
         # convert method names from input to the names in alg_dic
         for input_method_name in method_list:
             print(input_method_name, alg_dic.keys())
@@ -224,47 +311,63 @@ if __name__=='__main__':
                 iter_num = min(args.iter_num, len(Y)-1) 
                 time_start = time.time()
                 print('----------running', alg_name, '-----------')
-                if 'naive' in alg_name or 'oracle' in alg_name: exp_alias=''
-                else: exp_alias=str(args.policy_budget)+'_' + str(args.min_resource)
+                if 'naive' in alg_name or 'oracle' in alg_name or 'fixed' in alg_name: exp_alias=''
+                else: exp_alias=str(args.policy_budget)
+
+                if 'naive' not in alg_name and args.config_oracle_random_seed:
+                    exp_alias = exp_alias+ '_seed_'+str(args.config_oracle_random_seed)
 
                 ### get result file name
-                res_file_name = ('-').join( [str(dataset), str(exp_alias), str(alg_name), str(iter_num),\
-                    str(args.shuffle_data), str(args.use_log)] ) + '.json'
+                if args.config_oracle_random_seed is not None:
+                    res_file_name = ('-').join( [str(dataset), 'ns'+str(args.ns_num), str(exp_alias), 
+                    str(alg_name), str(iter_num),str(args.shuffle_data), str(args.use_log) , \
+                    'seed'+str(args.config_oracle_random_seed)]) + '.json'
+                else:
+                    res_file_name = ('-').join( [str(dataset), 'ns'+str(args.ns_num), str(exp_alias), \
+                        str(alg_name), str(iter_num), str(args.shuffle_data), str(args.use_log)] ) + '.json'
                 res_dir = RES_LOG_DIR + 'oml_' + dataset + '/'
                 if not os.path.exists(res_dir): os.makedirs(res_dir)
                 result_file_address = res_dir+res_file_name
                 ### load result from file
                 if path.exists(result_file_address) and not args.force_rerun:
                     cumulative_loss_list = []
-                    result_log = ResultLogReader(result_file_address)
-                    result_log.open()
+                    # result_log = ResultLogReader(result_file_address)
+                    # result_log.open()
+                    # print('---result file exists and loading res from:', result_file_address)
+                    # for r in result_log.records():
+                    #     cumulative_loss_list.append(r.loss)
+                    # print('---finished loading')
                     print('---result file exists and loading res from:', result_file_address)
-                    for r in result_log.records():
-                        loss = r.loss
-                        cumulative_loss_list.append(loss)
+                    import json
+                    with open(result_file_address) as f:
+                        for line in f:
+                            cumulative_loss_list.append(json.loads(line)['loss'])
                     print('---finished loading')
                 else:
-                    if args.plot_only: raise FileNotFoundError
+                    if args.bar_plot_only: raise FileNotFoundError
                     ######################## RUNE EXP ##############################
-                    cumulative_loss_list = online_learning_loop(iter_num, vw_examples, Y, alg, 
-                        loss_func=fixed_hp_config['loss_function'],
-                        method_name = alg_name,result_file_address=result_file_address)
-                    logger.critical('%ss running time: %s, total iter num is %s', alg_name, time.time() - time_start, iter_num)
-                
-                
+                    cumulative_loss_list = []
+                    if not args.force_no_rerun:
+                        cumulative_loss_list = online_learning_loop(iter_num, vw_examples, Y, alg, 
+                            loss_func=fixed_hp_config['loss_function'],
+                            method_name = alg_name,result_file_address=result_file_address)
+                        logger.critical('%ss running time: %s, total iter num is %s', alg_name, time.time() - time_start, iter_num)    
                 # generate the plots
                 ##TODO: add more visualization 
-                plot_obj(cumulative_loss_list, alias= alg_name)
-                
+                if cumulative_loss_list:
+                    # if not args.bar_plot_only: plot_obj(cumulative_loss_list, alias= alg_name)
+                    method_results[alg_name] = sum(cumulative_loss_list)/len(cumulative_loss_list)   
             else:
                 print('alg not exist')
-
-        # save the plots
-        alias = 'loss_' + 'ns_' + str(args.ns_num) + '_shuffle_' + str(args.shuffle_data) + '_log_' + str(args.use_log) + \
-            dataset + '_' + exp_alias + '_' + str(iter_num)
-        # alias = 'shuffled_data_loss' + dataset + '_' + exp_alias
-        fig_name = PLOT_DIR + alias + '.pdf'
-        plt.savefig(fig_name)
+        all_dataset_result[dataset] = method_results
+        if cumulative_loss_list:
+            # save the plots
+            alias = 'loss_' + 'ns_' + str(args.ns_num) + '_shuffle_' + str(args.shuffle_data) + '_log_' + str(args.use_log) + \
+                dataset + '_' + exp_alias + '_' + str(iter_num)
+            # alias = 'shuffled_data_loss' + dataset + '_' + exp_alias
+            fig_name = PLOT_DIR + alias + '.pdf'
+            plt.savefig(fig_name)
+    plot_normalized_scores(all_dataset_result)
 
 ## command lines to run exp
 # conda activate vw
@@ -273,5 +376,5 @@ if __name__=='__main__':
 
 # -m naiveVW oracleVW fixed Chambent-Doubling Chambent-Inf
 
-# python tester.py -i 1000 -min_resource 20 -policy_budget 5  -dataset simulation -m Chambent-SuccessiveDoubling Chambent-Inf -rerun
-# python tester.py -i 10000 -min_resource 10 -policy_budget 5 -dataset 344  -rerun  -log -m Chambent-SuccessiveDoubling Chambent-Inf
+# python tester.py -i 1000 -policy_budget 5  -dataset simulation -m Chambent-SuccessiveDoubling Chambent-Inf -rerun
+# python tester.py -i 10000 -policy_budget 5 -dataset 344  -rerun  -log -m Chambent-SuccessiveDoubling Chambent-Inf
