@@ -12,15 +12,15 @@ class ResultLogRecord(object):
                  loss: float,
                  time_used: float,
                  incumbent_config: str=None,
-                 champion_config: str=None
+                 champion_config: str=None,
                  ):
         self.record_id = record_id
-        self.y_predict = y_predict
-        self.y = y
-        self.loss = loss
-        self.time_used = '{:.4f}'.format(float(time_used))
-        self.incumbent_config = incumbent_config
-        self.champion_config = champion_config
+        self.y_predict= float('{:.5f}'.format(float(y_predict)))
+        self.y = float('{:.5f}'.format(float(y)))
+        self.loss = float('{:.5f}'.format(float(loss)))
+        self.time_used = float('{:.4f}'.format(float(time_used)))
+        # self.inc = incumbent_config
+        # self.cha = champion_config
 
     def dump(self, fp: IO[str]):
         d = vars(self)
