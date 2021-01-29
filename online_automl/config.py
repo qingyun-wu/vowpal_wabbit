@@ -1,15 +1,24 @@
 
 VW_DS_DIR = './data/openml_vwdatasets/'
 LOG_DIR = './result/log/'
-RES_LOG_DIR = './result/result_log/'
+
 STDOUT_DIR = './result/stdout/'
 PLOT_DIR = './result/plots/'
+MAIN_RES_LOG_DIR = './result/result_log/'
+
+AB_RES_LOG_DIR = './result/result_log/'
+
 RANDOM_SEED = 20201234
 QW_OML_API_KEY = '8c4eebcda506ae1065902c2b224369b9'
 WARMSTART_NUM = 50
 CANDIDATE_SIZE = 10
-significant_dataset_ids  = [201, 1191, 1208, 42571, 215, 344, 564, 1196, 1199, 1203, 1206, 
-5648, 23515, 41065, 41506, 41539, 42495, 42729]
+MIN_RES_CONST = 5
+ORACLE_RANDOM_SEED = 2345
+
+significant_dataset_ids = [201, 1191, 215, 344, 537, 564, 1196, 1199, 1203, 1206, 
+5648, 23515, 41506, 41539, 42729, 42496] #42495 (missing value),
+ICML_DATASET_10NS = [201, 1191, 215, 344, 537, 564, 1196, 1199, 1203, 1206, 
+5648, 23515, 41506, 41539, 42729, 42496]
 
 dataset_ids = [573, 1201, 1195, 344, 1192, 201, 216, 41065, 42731, 42712, 4545, 42688, 1196, 23515, 1206, 
 1193, 42721, 42571, 42713, 537, 42724, 41540, 4549, 296, 574, 218, 5648, 215, 41539, 1199, 1203, 1191, 564, 
