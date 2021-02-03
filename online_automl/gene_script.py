@@ -30,6 +30,8 @@
 import argparse
 from config import STDOUT_DIR, VW_DS_DIR, OPENML_REGRESSION_LIST_larger_than_5k_no_missing, not_regression, \
     OPENML_REGRESSION_LIST_inst_larger_than_10k_regression
+from config import significant_dataset_ids
+
 def get_full_ds_list(DIR):
     import os
     dids = []
@@ -65,12 +67,12 @@ if __name__=='__main__':
                         help='whether to force rerun.') 
     parser.add_argument('-log', '--use_log', action='store_true',
                         help='whether to use log.') 
-    parser.add_argument('-focused', '--focused', action='store_true',
+    parser.add_argument('-icml', '--focused', action='store_true',
                         help='whether to use log.') 
     parser.add_argument('-filename', '--file_name', metavar='file_name',  
         default='run_exp.sh', help="result filename")
     args = parser.parse_args()
-
+    
     iter_budget = args.iter # iterations, for synthetic study only
     alias_time = '-i ' + str(iter_budget)
     alias_resource = '-min_resource ' + str(args.min_resource)
@@ -92,7 +94,7 @@ if __name__=='__main__':
         dataset_list =[d for d in dataset_list if int(d) in set(OPENML_REGRESSION_LIST_inst_larger_than_10k_regression+d_large+d_significant)]
         dataset_list =[d for d in dataset_list if int(d) not in not_regression]
         if args.focused:
-            dataset_list =[d for d in dataset_list if int(d)  in d_significant]
+            dataset_list =[d for d in dataset_list if int(d)  in significant_dataset_ids]
         print('da ist', dataset_list, len(dataset_list))
         failed_datasets = [d for d in OPENML_REGRESSION_LIST_inst_larger_than_10k_regression if str(d) not in dataset_list]
         print('failed', failed_datasets)
