@@ -247,7 +247,7 @@ class AutoVW:
                 **trial_runner_commmon_args
                 )
         elif 'ChaCha' in self._trial_runner_name:
-            from AML.blendsearch.scheduler.online_scheduler import FlexibleScheduler
+            from AML.blendsearch.scheduler.online_scheduler import ChaChaScheduler
             s_args = {}
             s_args['keep_metric'] = 'ucb'
             s_args['keep'] = 'tophalf'
@@ -257,7 +257,7 @@ class AutoVW:
             if '0' in self._trial_runner_name:
                 s_args['keep'] = '0'
             scheduler_common_args.update(s_args)
-            my_scheduler = FlexibleScheduler(**scheduler_common_args)
+            my_scheduler = ChaChaScheduler(**scheduler_common_args)
             
             self._trial_runner = BaseOnlineTrialRunner(
                 scheduler=my_scheduler,
@@ -266,7 +266,7 @@ class AutoVW:
             #     scheduler=my_scheduler,
             #     **trial_runner_commmon_args)  
         elif 'Chambent-Van' in self._trial_runner_name:
-            from AML.blendsearch.scheduler.online_scheduler import FlexibleScheduler
+            from AML.blendsearch.scheduler.online_scheduler import ChaChaScheduler
             s_args = {}
             if 'ucb' in self._trial_runner_name:  
                 s_args['keep_metric'] = 'ucb'
@@ -285,7 +285,7 @@ class AutoVW:
             if 'champion' in self._trial_runner_name:
                 s_args['keep_champion'] = True 
             scheduler_common_args.update(s_args)
-            my_scheduler = FlexibleScheduler(**scheduler_common_args)
+            my_scheduler = ChaChaScheduler(**scheduler_common_args)
             self._trial_runner = BaseOnlineTrialRunner(
                 scheduler=my_scheduler,
                 **trial_runner_commmon_args)  
