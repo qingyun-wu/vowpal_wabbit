@@ -13,20 +13,21 @@ from os import path
 import matplotlib.pyplot as plt
 from result_log import ResultLogReader,ResultLogWriter
 from util import get_y_from_vw_example, get_ns_feature_dim_from_vw_example
-from config import FONT_size_label
+from config import FONT_size_label, FONT_size_stick_label, CSFONT, LEGEND_properties
+from get_plots import FINAL_METHOD_color
 
 FINAL_METHOD_alias = {
     'fixed-50-VW': 'ExhaustInit',
     'fixed-5-VW': 'RandomInit',
     'naiveVW': 'Naive',
+    'oracleVW': 'oracleVW',
     'ChaCha-Org': 'ChaCha',
-    # 'Chambent-Hybrid': 'ChaCha',
-    'ChaCha-Demo': 'ChaCha'
+    'Chambent-Hybrid': 'ChaCha-Hybrid',
+    'ChaCha-Demo': 'ChaCha',
+    'ChaCha-Final': 'ChaCha-Final'
 }
 
 logger = logging.getLogger(__name__)
-# TODO:
-# 2. add config info in file name; 3. setup; 4. how to re-run a particular method
 def plot_obj_cumulative(obj_list, alias='reward', vertical_list=None):
     avg_list = [obj_list[i]/i for i in range(1, len(obj_list))]
     plt.plot(range(0, len(avg_list)), avg_list[0:], label = alias)
@@ -39,7 +40,6 @@ def plot_obj_cumulative(obj_list, alias='reward', vertical_list=None):
             plt.axvline(x=v)
     online_avg_loss = [(obj_list[i+100] -obj_list[i])/100 for i in range(len(obj_list)-100)]
 
-
 def plot_obj(obj_list, alg_name='ChaCha', vertical_list=None, demo=False):
     print(obj_list[:5])
     avg_list = [sum(obj_list[:i])/i for i in range(1, len(obj_list))]
@@ -51,17 +51,17 @@ def plot_obj(obj_list, alg_name='ChaCha', vertical_list=None, demo=False):
             if 'Naive' in alias: alias = 'online learning'
             if 'ChaCha' in alias: alias = 'online learning with ChaCha'
             # if 'ExhaustInit' in alias: alias = 'online learning with ChaCha'
-        plt.plot(range(warm_starting_point, len(avg_list)), avg_list[warm_starting_point:], label = alias)
-        plt.xlabel('# of samples', fontsize=FONT_size_label)
-        plt.ylabel('Progressive validation loss ', fontsize=FONT_size_label)
+        plt.plot(range(warm_starting_point, len(avg_list)), avg_list[warm_starting_point:], color=FINAL_METHOD_color[alg_name], label = alias)
+        plt.xlabel('# of data samples', fontsize=FONT_size_label, **CSFONT)
+        plt.ylabel('Progressive validation loss', fontsize=FONT_size_label, **CSFONT)
+        plt.rcParams['ytick.labelsize']=FONT_size_stick_label
         plt.yscale('log')
         # plt.xscale('log')
-        plt.legend()
+        plt.legend(loc =  'upper right', prop=LEGEND_properties)
         # if vertical_list and 'ChaCha' in alias:
         #     for v in vertical_list:
         #         if v!=0: plt.axvline(x=v,color='r',linestyle='--')
         # online_avg_loss = [(obj_list[i+100] -obj_list[i])/100 for i in range(len(obj_list)-100)]
-
 
 def plot_progressive_loss(loss_dic, fig_name):
     """
@@ -120,8 +120,6 @@ def get_normalized_score(res_dic, m_name, labels, name_0='naive', name_1='fixed-
                 normalized_loss[alg] = float('{:.2f}'.format(float(normalized_loss[alg])))
         else: label_scores.append(0) #TODO: check 
     return label_scores
-
-
 
 def plot_normalized_scores(res_dic, alias='', chacha_name='Chambent-Hybrid', error_bar=False, name_0='naive', name_1='fixed-50'):
     m1_name = 'fixed-5-VW'
@@ -286,6 +284,8 @@ if __name__=='__main__':
                         help='whether to use_log.') 
     parser.add_argument('-demo', '--demo_champion', action='store_true',
                         help='whether to demo_champion.') 
+    parser.add_argument('-show_plot', '--show_plot', action='store_true',
+                        help='whether to demo_champion.') 
 
     args = parser.parse_args()
     all_dataset_result = {}
@@ -328,8 +328,7 @@ if __name__=='__main__':
 
         ## setup configs for other autoVW methods
         auto_alg_common_args = {
-            "min_resource_budget": feature_dim*MIN_RES_CONST, # args.min_resource,
-            # "min_resource_budget": 20, # args.min_resource,
+            "min_resource_budget": feature_dim*MIN_RES_CONST, 
             "concurrent_running_budget":args.policy_budget,
             "namespace_feature_dim": namespace_feature_dim if namespace_feature_dim else None, 
             "fixed_hp_config":fixed_hp_config,
@@ -371,6 +370,11 @@ if __name__=='__main__':
             "trial_runner_name": 'ChaCha-Org',
             'remove_worse': 1,
             }
+        
+        ChaCha_final = {
+            "trial_runner_name": 'ChaCha-Final',
+            'remove_worse': 1,
+            }
 
         ChaCha_demo = {
             "trial_runner_name": 'ChaCha-Demo',
@@ -410,8 +414,6 @@ if __name__=='__main__':
             "trial_runner_name": 'Chambent-Van-ucb-tophalf',
             'remove_worse': 1,
             }
-
-
         Chambent_van_top1_lcb = {
             "trial_runner_name": 'Chambent-Van-lcb-top1',
             'remove_worse': 1,
@@ -443,13 +445,6 @@ if __name__=='__main__':
             'model_select_policy': 'select:threshold_ucb_champion',
             'remove_worse': 1,
             }
-
-        # Chambent_van_tophalf_avg_champion_incumbent = {
-        #     "trial_runner_name": 'Chambent-Van-avg-champion-tophalf',
-        #     'model_select_policy': 'select:threshold_champion',
-        #     'remove_worse': 1,
-        #     }
-
         Chambent_test = {
             "trial_runner_name": 'Chambent-Test',
             'remove_worse': 1,
@@ -468,9 +463,9 @@ if __name__=='__main__':
             'remove_worse': 1,
             }
         baseline_auto_methods = [fixed_b_vw, fixed_b_vw_50] #autocross
-        auto_alg_args_ist = [ChaCha,ChaCha_CB, ChaCha_keep_0, ChaCha_demo, ChaCha_no_champion,  Chambent_test, Chambent_hybrid, Chambent_vanilla, Chambent_van_top1, Chambent_van_tophalf,
-            Chambent_van_top1_lcb, Chambent_van_tophalf_lcb, Chambent_van_tophalf_champion, Chambent_van_tophalf_champion_inc] # Chambent_test [Chambent_Doubling, Chambent_hybrid, Chambent_Inf] Chambent_test
-        # auto_alg_args_ist = [Chambent_vanilla, Chambent_van_top1, Chambent_van_tophalf] Chambent_vanilla, Chambent_van_top1, Chambent_van_tophalf
+        auto_alg_args_ist = [ChaCha,ChaCha_CB, ChaCha_keep_0, ChaCha_demo, ChaCha_final, ChaCha_no_champion, \
+             Chambent_test, Chambent_hybrid, Chambent_vanilla, Chambent_van_top1, Chambent_van_tophalf,
+             Chambent_van_tophalf_champion,] 
         for alg_args in (baseline_auto_methods + auto_alg_args_ist):
             autovw_args = auto_alg_common_args.copy()
             autovw_args.update(alg_args)
@@ -509,11 +504,11 @@ if __name__=='__main__':
                 if 'naive' in alg_name or 'oracle' in alg_name or 'fixed' in alg_name: exp_alias=''
                 else: exp_alias=str(args.policy_budget)
 
-                if 'naive' not in alg_name and args.config_oracle_random_seed:
+                if 'naive' not in alg_name and 'fixed-50' not in alg_name and args.config_oracle_random_seed:
                     exp_alias = exp_alias+ '_seed_'+str(args.config_oracle_random_seed)
 
                 ### get result file name
-                if args.config_oracle_random_seed is not None:
+                if args.config_oracle_random_seed is not None and 'naive' not in alg_name and 'fixed-50' not in alg_name:
                     res_file_name = ('-').join( [str(dataset), 'ns'+str(args.ns_num), str(exp_alias), 
                     str(alg_name), str(iter_num),str(args.shuffle_data), str(args.use_log) , \
                     'seed'+str(args.config_oracle_random_seed)]) + '.json'
@@ -524,6 +519,7 @@ if __name__=='__main__':
                 if not os.path.exists(res_dir): os.makedirs(res_dir)
                 result_file_address = res_dir+res_file_name
                 ### load result from file
+                print('result_file_address', result_file_address)
                 if path.exists(result_file_address) and not args.force_rerun:
                     cumulative_loss_list = []
                     champion_detection = []
@@ -549,13 +545,12 @@ if __name__=='__main__':
                             method_name = alg_name,result_file_address=result_file_address, demo_champion_detection=args.demo_champion)
                         logger.critical('%ss running time: %s, total iter num is %s', alg_name, time.time() - time_start, iter_num)    
                 # generate the plots
-                ##TODO: add more visualization 
                 if cumulative_loss_list:
                     # if not args.bar_plot_only: plot_obj(cumulative_loss_list, alias= alg_name)
                     print('alg_name', alg_name)
                     logger.debug('calling algname')
                     # alias = 'shuffled_data_loss' + dataset + '_' + exp_alias
-                    plot_obj(cumulative_loss_list, alg_name= alg_name, vertical_list=champion_detection, demo=args.demo_champion)
+                    if args.demo_champion: plot_obj(cumulative_loss_list, alg_name= alg_name, vertical_list=champion_detection, demo=args.demo_champion)
                     method_results[alg_name] = sum(cumulative_loss_list)/len(cumulative_loss_list) 
                     if alg_name not in method_cum_loss:  method_cum_loss[alg_name] = []
                     method_cum_loss[alg_name].append(cumulative_loss_list)
@@ -567,25 +562,15 @@ if __name__=='__main__':
             alias = 'loss_' + 'ns_' + str(args.ns_num) + '_shuffle_' + str(args.shuffle_data) + '_log_' + str(args.use_log) + \
                 dataset + '_' + exp_alias + '_' + str(iter_num)
             # alias = 'shuffled_data_loss' + dataset + '_' + exp_alias
-            if args.demo_champion: alias += '_demo'
-            fig_name = PLOT_DIR + alias + '.pdf'
-            plt.savefig(fig_name)
-    # plot_normalized_scores(all_dataset_result,'cha-org', 'ChaCha-Org')
-    # plot_normalized_scores(all_dataset_result,'cha-org', 'Chambent-Hybrid')
-    # plot_progressive_loss(method_cum_loss)
+            if args.demo_champion: 
+                alias += '_demo'
+                fig_name = PLOT_DIR + alias + '.pdf'
+                plt.savefig(fig_name)
     if method_cum_loss:
         # save the plots
+        exp_alias += '_b_' + str(args.policy_budget) + "_seed_"+str(args.config_oracle_random_seed) + "_"
         alias = 'loss_' + 'ns_' + str(args.ns_num) + '_shuffle_' + str(args.shuffle_data) + '_log_' + str(args.use_log) + \
             dataset + '_' + exp_alias + '_' + str(iter_num)
         # alias = 'shuffled_data_loss' + dataset + '_' + exp_alias
         fig_name = PLOT_DIR + alias + '.pdf'
-        # plot_progressive_loss(method_cum_loss, fig_name)
-## command lines to run exp
-# conda activate vw
-# python tester.py -i 10000 -c 200 >res.txt
-
-
-# -m naiveVW oracleVW fixed Chambent-Doubling Chambent-Inf
-
-# python tester.py -i 1000 -policy_budget 5  -dataset simulation -m Chambent-SuccessiveDoubling Chambent-Inf -rerun
-# python tester.py -i 10000 -policy_budget 5 -dataset 344  -rerun  -log -m Chambent-SuccessiveDoubling Chambent-Inf
+        if args.show_plot: plot_progressive_loss(method_cum_loss, fig_name)
