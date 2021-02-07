@@ -13,31 +13,76 @@ from os import path
 import matplotlib.pyplot as plt
 from result_log import ResultLogReader,ResultLogWriter
 from util import get_y_from_vw_example, get_ns_feature_dim_from_vw_example
-from config import FONT_size_label
+from config import FONT_size_label, FONT_size_stick_label, LEGEND_properties
 SEED_LIST = [None, 9999, 4567, 8666, 2468]
 FINAL_METHOD_alias = {
-    'fixed-50-VW': 'ExhaustInit',
-    'fixed-5-VW': 'RandomInit',
-    'naiveVW': 'Naive',
+    'fixed-50-VW': 'Exhaustive',
+    'fixed-5-VW': 'Random',
+    'naiveVW': 'Vanilla',
     'ChaCha-Org': 'ChaCha',
     'Chambent-Hybrid': 'ChaCha',
     'ChaCha-nochampion-top0': 'ChaCha-w/o-Champion',
     'ChaCha-ucb-top0': 'ChaCha-AggressiveScheduling',
+    'ChaCha-Final': 'ChaCha-Final',
 }
+
+FINAL_METHOD_alias_key_list = ['naiveVW', 'fixed-50-VW', 'fixed-5-VW','Chambent-Hybrid','ChaCha-Org', 'ChaCha-nochampion-top0','ChaCha-ucb-top0', 'ChaCha-Final']
 
 FINAL_METHOD_color = {
     'fixed-50-VW': 'tab:red',
     'fixed-5-VW': 'tab:blue',
     'naiveVW': 'tab:brown',
     'ChaCha-Org': 'tab:green',
-    'Chambent-Hybrid': 'black',
-    'ChaCha-nochampion-top0': 'tab:orange',
-    'ChaCha-ucb-top0': 'tab:purple',
+    'Chambent-Hybrid': 'tab:green',
+    'ChaCha-nochampion-top0': 'tab:red',
+    'ChaCha-ucb-top0': 'tab:orange',
+    'ChaCha-Demo': 'tab:green',
+    'ChaCha-Final': 'tab:red'
 }
+
+
+FINAL_METHOD_line = {
+    'fixed-50-VW': '--',
+    'fixed-5-VW': '-',
+    'naiveVW': ':',
+    'ChaCha-Org': '-',
+    'Chambent-Hybrid':'-',
+    'ChaCha-nochampion-top0': '-',
+    'ChaCha-ucb-top0': '-',
+    'ChaCha-Demo': '-',
+    'ChaCha-Final': '-',
+}
+
+FINAL_METHOD_marker = {
+    'fixed-50-VW': '',
+    'fixed-5-VW': 'o',
+    'naiveVW': '',
+    'ChaCha-Org': 's',
+    'Chambent-Hybrid': 's',
+    'ChaCha-nochampion-top0': 's',
+    'ChaCha-ucb-top0': 's',
+    'ChaCha-Demo': 's',
+    'ChaCha-Final': 's',
+}
+
+
+FINAL_METHOD_hatch= {
+    'fixed-50-VW': '-',
+    'fixed-5-VW': 'x',
+    'naiveVW': 'tab:brown',
+    'ChaCha-Org': '/',
+    'Chambent-Hybrid': '/',
+    'ChaCha-nochampion-top0': 'O',
+    'ChaCha-ucb-top0': '+',
+    'ChaCha-Demo': '/',
+    'ChaCha-Final': '/'
+}
+
 
 MAIN_NAME_LIST = ['fixed-5-VW','Chambent-Hybrid']
 ABL_NAME_LIST = ['Chambent-Hybrid', 'ChaCha-nochampion-top0','ChaCha-ucb-top0']
 MAIN_NAME_LIST_2 = ['fixed-5-VW','ChaCha-Org']
+# MAIN_NAME_LIST_2 = ['fixed-5-VW','ChaCha-Final']
 logger = logging.getLogger(__name__)
 # TODO:
 # 2. add config info in file name; 3. setup; 4. how to re-run a particular method
@@ -60,10 +105,11 @@ def plot_obj(obj_list, alias='loss', vertical_list=None):
     total_obs = len(avg_list)
     warm_starting_point =  WARMSTART_NUM#  int(total_obs*0.01) #100 #
     plt.plot(range(warm_starting_point, len(avg_list)), avg_list[warm_starting_point:], label = alias)
-    plt.xlabel('# of samples', fontsize=FONT_size_label)
-    plt.ylabel('Progressive validation ' + alias, fontsize=FONT_size_label)
+    plt.xlabel('# of data samples', fontsize=FONT_size_label)
+    plt.ylabel('Progressive validation loss', fontsize=FONT_size_label)
+    plt.rcParams['ytick.labelsize']=FONT_size_stick_label
     plt.yscale('log')
-    plt.legend()
+    plt.legend(loc = 'upper right', prop=LEGEND_properties)
     if vertical_list:
         for v in vertical_list:
             plt.axvline(x=v)
@@ -86,26 +132,32 @@ def plot_progressive_loss(loss_dic, fig_name):
         for loss_list in v:
             avg_list = [sum(loss_list[:i*100])/(i*100) for i in range(1, int(len(loss_list)/res)-1)]
             progressive_loss_dic[k].append(avg_list)
-        print(len(progressive_loss_dic[k]), 'nimber')
+        print(len(progressive_loss_dic[k]), 'numbers')
         progressive_loss_dic[k] = np.array(progressive_loss_dic[k])
         prog_loss_mean_dic[k] = np.mean(progressive_loss_dic[k], axis=0 )
         prog_loss_std_dic[k] = np.std(progressive_loss_dic[k], axis=0 )
     print('plotting')
     fig, ax = plt.subplots()
-    for method, alias in FINAL_METHOD_alias.items():
+    for method in FINAL_METHOD_alias_key_list:
+        assert method in FINAL_METHOD_alias
+        alias = FINAL_METHOD_alias[method]
+    # for method, alias in FINAL_METHOD_alias.items():
         if method in prog_loss_mean_dic:
             avg_list = prog_loss_mean_dic[method] 
             std_list = prog_loss_std_dic[method]
             print(std_list[0:10])
             warm_starting_point =  WARMSTART_NUM#  int(total_obs*0.01) #100 #
-            ax.plot(range(len(avg_list)), avg_list, color=FINAL_METHOD_color[method],label = alias)
-            ax.fill_between(range(len(avg_list)), avg_list - std_list, avg_list + std_list,color=FINAL_METHOD_color[method], alpha=0.2)
-    ax.set_xlabel('# of samples', fontsize=FONT_size_label)
+            ax.plot(range(len(avg_list)), avg_list, color=FINAL_METHOD_color[method],\
+                label = alias, ls = FINAL_METHOD_line[method], marker = FINAL_METHOD_marker[method],
+                markevery=100,linewidth=1.5)
+            ax.fill_between(range(len(avg_list)), avg_list - std_list, avg_list + std_list,color=FINAL_METHOD_color[method], alpha=0.3)
+    ax.set_xlabel('# of data samples', fontsize=FONT_size_label)
     ax.set_ylabel('Progressive validation loss', fontsize=FONT_size_label)
     ticks = ax.get_xticks()*int(res)
+    plt.ylabel('Progressive validation loss', fontsize=FONT_size_label)
     ax.set_xticklabels(ticks)
     ax.set_yscale('log')
-    plt.legend()
+    plt.legend(loc =  'upper right', ncol=2, prop=LEGEND_properties)
 
     plt.savefig(fig_name)
 
@@ -138,7 +190,7 @@ def plot_normalized_scores(res_dic, alias='', chacha_name='ChaCha-nochampion-top
     m2_name = chacha_name
     m1_alias = 'RandomInit'
     m2_alias = 'ChaCha-'
-    all_names = ['ChaCha-CB','ChaCha-Org','ChaCha','ChaCha-ucb-top0','ChaCha-nochampion', 'fixed-5-VW', 'Chambent-Hybrid', 'Chambent-Van-ucb-tophalf']
+    all_names = ['ChaCha-CB','ChaCha-Org', 'ChaCha-Final', 'ChaCha','ChaCha-ucb-top0','ChaCha-nochampion', 'fixed-5-VW', 'Chambent-Hybrid', 'Chambent-Van-ucb-tophalf']
     # print 
     print('resdic', res_dic)
     if not error_bar: 
@@ -174,9 +226,8 @@ def plot_normalized_scores(res_dic, alias='', chacha_name='ChaCha-nochampion-top
     std_2 = np.std(all_res2, axis=0)
    
     fig, ax = plt.subplots()
-    rects1 = ax.bar(x - width/2, res_1, width, yerr=std_1, label=m1_alias,
-          ecolor='grey')
-    rects2 = ax.bar(x + width/2, res_2, width, yerr=std_2, label=m2_alias, ecolor='grey')
+    rects1 = ax.bar(x - width/2, res_1, width, yerr=std_1, label=m1_alias, color=FINAL_METHOD_color[m1_name],  ecolor='grey')
+    rects2 = ax.bar(x + width/2, res_2, width, yerr=std_2, label=m2_alias, color=FINAL_METHOD_color[m2_name], ecolor='grey')
     
     methods_to_show =['fixed-5-VW', 'Chambent-Hybrid', ]
     # Add some text for labels, title and custom x-axis tick labels, etc.
@@ -205,8 +256,18 @@ def plot_normalized_scores(res_dic, alias='', chacha_name='ChaCha-nochampion-top
     plt.close()
 
 
-def normalized_scores_barplot(res_dic, alias='', method_list_to_show = [], error_bar=False, name_0='naive', name_1='fixed-50'):
-    all_names = ['ChaCha-CB','ChaCha-Org','ChaCha','ChaCha-ucb-top0','ChaCha-nochampion-top0', 'fixed-5-VW', 'Chambent-Hybrid', 'Chambent-Van-ucb-tophalf']
+def normalized_scores_barplot(res_dic, alias='', method_list_to_show = [], error_bar=False, print_table=False,name_0='naive', name_1='fixed-50'):
+    all_names = [ 'fixed-5-VW', 'ChaCha-CB','ChaCha-Org','ChaCha', 'ChaCha-Final','ChaCha-nochampion-top0', 'ChaCha-ucb-top0','Chambent-Hybrid', 'Chambent-Van-ucb-tophalf']
+    
+    table_method_names = ['fixed-5-VW','Chambent-Hybrid', 'ChaCha-nochampion-top0', 'ChaCha-ucb-top0']
+    table_name_label = {
+        'fixed-5-VW': '\RandomInit' ,
+        'Chambent-Hybrid': '\Chambent' , 
+        'ChaCha-nochampion-top0':'\Chambent-w/o-Champion', 
+        'ChaCha-ucb-top0': '\Chambent-AggressiveScheduling',
+    }
+    table_lines = []
+    table_line_0 = 'Dataset id &' + (' & ').join([table_name_label[n] for n in table_method_names]) + ' \\\ \hline'
     # print 
     print('resdic', res_dic)
     if not error_bar: 
@@ -221,12 +282,20 @@ def normalized_scores_barplot(res_dic, alias='', method_list_to_show = [], error
     all_res2=[]
     print(datasets)
     fig, ax = plt.subplots()
-    if len(method_list_to_show) <3: barWidth = 0.25
-    else: barWidth = 0.15
+    if len(method_list_to_show) <3: 
+        barWidth = 0.25
+        loc_num = 2
+        blk = False
+    else: 
+        barWidth = 0.2
+        loc_num = 1
+        blk = True
 
     r_position = []
     r0 = np.arange(len(labels))
     r_position.append(r0)
+    table_method_mean ={}
+    table_method_std = {}
     for i,m_name in enumerate(all_names):
         all_res = []
         for res_dic in result:
@@ -236,10 +305,30 @@ def normalized_scores_barplot(res_dic, alias='', method_list_to_show = [], error
         m_std = np.std(all_res, axis=0)
         m_alias = FINAL_METHOD_alias[m_name] if m_name in FINAL_METHOD_alias else 'None'
         m_color = FINAL_METHOD_color[m_name] if m_name in FINAL_METHOD_alias else 'red'
+        m_hatch = FINAL_METHOD_hatch[m_name] if m_name in FINAL_METHOD_alias else 'x'
         if m_name in method_list_to_show:
             r_new = [x + barWidth for x in r_position[-1]]
             r_position.append(r_new) 
-            plt.bar(r_position[-1], m_mean, width=barWidth, yerr=m_std, label=m_alias, ecolor='grey' )
+            plt.bar(r_position[-1], m_mean, width=barWidth, yerr=m_std, label=m_alias, color=m_color, ecolor='grey' ) #hatch = m_hatch,
+        if m_name in table_method_names:
+            table_method_mean[m_name] = m_mean
+            table_method_std[m_name] = m_std
+    ###generate table lines
+    if print_table:
+        print(table_line_0) 
+        for i, d_id in enumerate(labels):
+            mean_list = [table_method_mean[method][i] for method in table_method_names ]
+            max_mean = max(mean_list)
+            print_mean_list = {}
+            for j, mean in enumerate(mean_list):
+                if mean != max_mean:
+                    print_mean = '{:.2f}'.format(float(mean))
+                else: print_mean = '\\textbf{'+ '{:.2f}'.format(float(mean)) + '}'
+                print_mean_list[table_method_names[j]] = print_mean
+            res_list = [print_mean_list[method]+ ' $\pm$ ' + \
+                 '{:.2f}'.format(float(table_method_std[method][i])) for method in table_method_names]
+            data_line = str(d_id) + ' & ' +  (' & ').join(res_list) + ' \\\ '
+            print(data_line)
     # x = np.arange(len(labels))
     # Add some text for labels, title and custom x-axis tick labels, etc.
     ax.set_ylabel('Normalized score', fontsize=FONT_size_label)
@@ -247,8 +336,10 @@ def normalized_scores_barplot(res_dic, alias='', method_list_to_show = [], error
     ax.set_xticks(r0)
     ax.set_xticklabels(labels,rotation=50)
     ax.set_ylim(-0.5,2.0)
-    ax.legend(loc='upper left')
-
+    if blk:
+        ax.legend(loc='upper left', ncol= loc_num, prop={'weight':'bold' }) #prop=LEGEND_properties
+    else:
+        ax.legend(loc='upper left', ncol= loc_num,prop=LEGEND_properties) #prop=LEGEND_properties
     def autolabel(rects):
         """Attach a text label above each bar in *rects*, displaying its height."""
         for rect in rects:
@@ -502,7 +593,10 @@ if __name__=='__main__':
             #     'model_select_policy': 'select:threshold_champion',
             #     'remove_worse': 1,
             #     }
-
+            ChaCha_final = {
+            "trial_runner_name": 'ChaCha-Final',
+            'remove_worse': 1,
+            }
             Chambent_test = {
                 "trial_runner_name": 'Chambent-Test',
                 'remove_worse': 1,
@@ -521,7 +615,7 @@ if __name__=='__main__':
                 'remove_worse': 1,
                 }
             baseline_auto_methods = [fixed_b_vw, fixed_b_vw_50] #autocross
-            auto_alg_args_ist = [ChaCha,ChaCha_CB, ChaCha_keep_0, ChaCha_no_champion,  Chambent_test, Chambent_hybrid, Chambent_vanilla, Chambent_van_top1, Chambent_van_tophalf,
+            auto_alg_args_ist = [ChaCha,ChaCha_CB, ChaCha_keep_0, ChaCha_no_champion, ChaCha_final, Chambent_test, Chambent_hybrid, Chambent_vanilla, Chambent_van_top1, Chambent_van_tophalf,
                 Chambent_van_top1_lcb, Chambent_van_tophalf_lcb, Chambent_van_tophalf_champion, Chambent_van_tophalf_champion_inc] # Chambent_test [Chambent_Doubling, Chambent_hybrid, Chambent_Inf] Chambent_test
             # auto_alg_args_ist = [Chambent_vanilla, Chambent_van_top1, Chambent_van_tophalf] Chambent_vanilla, Chambent_van_top1, Chambent_van_tophalf
             for alg_args in (baseline_auto_methods + auto_alg_args_ist):
@@ -564,11 +658,11 @@ if __name__=='__main__':
                     if 'naive' in alg_name or 'oracle' in alg_name or 'fixed' in alg_name: exp_alias=''
                     else: exp_alias=str(args.policy_budget)
 
-                    if 'naive' not in alg_name and seed is not None:
+                    if 'naive' not in alg_name and 'fixed-50' not in alg_name and seed is not None:
                         exp_alias = exp_alias+ '_seed_'+str(seed)
 
                     ### get result file name
-                    if seed is not None:
+                    if seed is not None and 'naive' not in alg_name and 'fixed-50' not in alg_name:
                         res_file_name = ('-').join( [str(dataset), 'ns'+str(args.ns_num), str(exp_alias), 
                         str(alg_name), str(iter_num),str(args.shuffle_data), str(args.use_log) , \
                         'seed'+str(seed)]) + '.json'
@@ -593,6 +687,7 @@ if __name__=='__main__':
                             for line in f:
                                 cumulative_loss_list.append(json.loads(line)['loss'])
                         print('---finished loading')
+                    else: cumulative_loss_list = []
                     # generate the plots
                     ##TODO: add more visualization 
                     if cumulative_loss_list:
@@ -613,13 +708,13 @@ if __name__=='__main__':
             dataset + '_' + exp_alias + '_' + str(iter_num)
         # alias = 'shuffled_data_loss' + dataset + '_' + exp_alias
         fig_name = PLOT_DIR + alias + '.pdf'
-        plot_progressive_loss(method_cum_loss, fig_name)
+        if not args.barplot: plot_progressive_loss(method_cum_loss, fig_name)
     # plot_normalized_scores(all_dataset_result_list,'cha-org', 'ChaCha-nochampion-top0', error_bar=True)
     ## main result
     if args.barplot:
-        normalized_scores_barplot(all_dataset_result_list,'main', MAIN_NAME_LIST, error_bar=True)
-        normalized_scores_barplot(all_dataset_result_list,'ablation', ABL_NAME_LIST, error_bar=True)
-        normalized_scores_barplot(all_dataset_result_list,'main_2', MAIN_NAME_LIST_2, error_bar=True)
+        normalized_scores_barplot(all_dataset_result_list,str(args.iter_num)+'main', MAIN_NAME_LIST, error_bar=True)
+        normalized_scores_barplot(all_dataset_result_list,str(args.iter_num)+'ablation', ABL_NAME_LIST, error_bar=True)
+        normalized_scores_barplot(all_dataset_result_list, str(args.iter_num)+'main_2', MAIN_NAME_LIST_2, error_bar=True)
 ## command lines to run exp
 # conda activate vw
 # python tester.py -i 10000 -c 200 >res.txt
@@ -629,3 +724,5 @@ if __name__=='__main__':
 
 # python tester.py -i 1000 -policy_budget 5  -dataset simulation -m Chambent-SuccessiveDoubling Chambent-Inf -rerun
 # python tester.py -i 10000 -policy_budget 5 -dataset 344  -rerun  -log -m Chambent-SuccessiveDoubling Chambent-Inf
+
+# [{'1206': {'naiveVW': 1.6284202262102376, 'fixed-50-VW': 1.4420439611339975, 'fixed-5-VW': 1.448983518763434, 'ChaCha-Org': 1.3761618952017733}, '42729': {'naiveVW': 6.229631457615246, 'fixed-50-VW': 5.0004932481773245, 'fixed-5-VW': 5.503405002732813, 'ChaCha-Org': 5.6237443334525405}, '5648': {'naiveVW': 0.023672249039947107, 'fixed-50-VW': 0.01492653684998209, 'fixed-5-VW': 0.015918580629982495, 'ChaCha-Org': 0.01437508174998477}}, {'1206': {'naiveVW': 1.6284202262102376, 'fixed-50-VW': 1.4420439611339975, 'fixed-5-VW': 1.449479673569628, 'ChaCha-Org': 1.3631472642771765}, '42729': {'naiveVW': 6.229631457615246, 'fixed-50-VW': 5.0004932481773245, 'fixed-5-VW': 5.3574959464039855, 'ChaCha-Org': 5.615862015901436}, '5648': {'naiveVW': 0.023672249039947107, 'fixed-50-VW': 0.01492653684998209, 'fixed-5-VW': 0.01492653684998209, 'ChaCha-Org': 0.01432321402998736}}, {'1206': {'naiveVW': 1.6284202262102376, 'fixed-50-VW': 1.4420439611339975, 'fixed-5-VW': 1.4564046600846112, 'ChaCha-Org': 1.3812227881327628}, '42729': {'naiveVW': 6.229631457615246, 'fixed-50-VW': 5.0004932481773245, 'fixed-5-VW': 6.214972611483893, 'ChaCha-Org': 5.596958087289555}, '5648': {'naiveVW': 0.023672249039947107, 'fixed-50-VW': 0.01492653684998209, 'fixed-5-VW': 0.01492653684998209, 'ChaCha-Org': 0.014268473269986618}}, {'1206': {'naiveVW': 1.6284202262102376, 'fixed-50-VW': 1.4420439611339975, 'fixed-5-VW': 1.4506115684314995, 'ChaCha-Org': 1.3826555560855573}, '42729': {'naiveVW': 6.229631457615246, 'fixed-50-VW': 5.0004932481773245, 'fixed-5-VW': 5.503405002732813, 'ChaCha-Org': 5.335047516851907}, '5648': {'naiveVW': 0.023672249039947107, 'fixed-50-VW': 0.01492653684998209, 'fixed-5-VW': 0.015917624189982497, 'ChaCha-Org': 0.014348528889985281}}, {'1206': {'naiveVW': 1.6284202262102376, 'fixed-50-VW': 1.4420439611339975, 'fixed-5-VW': 1.449554932684887, 'ChaCha-Org': 1.3609443292543226}, '42729': {'naiveVW': 6.229631457615246, 'fixed-50-VW': 5.0004932481773245, 'fixed-5-VW': 6.174316067263326, 'ChaCha-Org': 5.637058842797119}, '5648': {'naiveVW': 0.023672249039947107, 'fixed-50-VW': 0.01492653684998209, 'fixed-5-VW': 0.019408717919956568, 'ChaCha-Org': 0.014670089629985556}}]

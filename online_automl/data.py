@@ -121,11 +121,13 @@ def get_data(iter_num=None, data_source = 'simulation', vw_format=True, max_ns_n
     # do log transformation
     unique_y = set(Y)
     all_y_positive = all(i>0 for i in unique_y)
-    if all_y_positive and (max(unique_y)>=100) and use_log:
+    d_list = [1191, 1196, 41539, 42496]
+    if (all_y_positive and (max(unique_y)>=100) and use_log) or (int(data_id) in d_list and use_log):
         log_vw_examples = []
         for v in vw_examples:
             org_y = v.split('|')[0]
             y = float(v.split('|')[0])
+            if y<=0: y=1.0  #convert nonpositive value to 0
             log_y = np.log(y)
             log_vw = v.replace(org_y + '|', str(log_y) + ' |')
             log_vw_examples.append(log_vw)
