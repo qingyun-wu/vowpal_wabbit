@@ -14,7 +14,10 @@ WARMSTART_NUM = 50
 CANDIDATE_SIZE = 10
 MIN_RES_CONST = 5
 ORACLE_RANDOM_SEED = 2345
-FONT_size_label = 20
+FONT_size_label = 18
+FONT_size_stick_label = 12
+CSFONT = {'fontname':'Times New Roman'}
+LEGEND_properties = {"size":14}
 
 significant_dataset_ids = [201, 1191, 215, 344, 537, 564, 1196, 1199, 1203, 1206, 
 5648, 23515, 41506, 41539, 42729, 42496] #42495 (missing value),
