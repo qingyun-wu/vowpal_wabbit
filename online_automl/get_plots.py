@@ -18,6 +18,8 @@ SEED_LIST = [None, 9999, 4567, 8666, 2468]
 FINAL_METHOD_alias = {
     'fixed-50-VW': 'Exhaustive',
     'fixed-5-VW': 'Random',
+    'fixed-3-VW': 'Random',
+    'fixed-10-VW': 'Random',
     'naiveVW': 'Vanilla',
     'ChaCha-Org': 'ChaCha',
     'Chambent-Hybrid': 'ChaCha',
@@ -26,11 +28,13 @@ FINAL_METHOD_alias = {
     'ChaCha-Final': 'ChaCha-Final',
 }
 
-FINAL_METHOD_alias_key_list = ['naiveVW', 'fixed-50-VW', 'fixed-5-VW','Chambent-Hybrid','ChaCha-Org', 'ChaCha-nochampion-top0','ChaCha-ucb-top0', 'ChaCha-Final']
+FINAL_METHOD_alias_key_list = ['naiveVW', 'fixed-50-VW', 'fixed-5-VW', 'fixed-3-VW','Chambent-Hybrid','ChaCha-Org', 'ChaCha-nochampion-top0','ChaCha-ucb-top0', 'ChaCha-Final']
 
 FINAL_METHOD_color = {
     'fixed-50-VW': 'tab:red',
     'fixed-5-VW': 'tab:blue',
+    'fixed-3-VW': 'tab:blue',
+    'fixed-10-VW': 'tab:blue',
     'naiveVW': 'tab:brown',
     'ChaCha-Org': 'tab:green',
     'Chambent-Hybrid': 'tab:green',
@@ -44,6 +48,8 @@ FINAL_METHOD_color = {
 FINAL_METHOD_line = {
     'fixed-50-VW': '--',
     'fixed-5-VW': '-',
+    'fixed-3-VW': '-',
+    'fixed-10-VW': '-',
     'naiveVW': ':',
     'ChaCha-Org': '-',
     'Chambent-Hybrid':'-',
@@ -56,6 +62,8 @@ FINAL_METHOD_line = {
 FINAL_METHOD_marker = {
     'fixed-50-VW': '',
     'fixed-5-VW': 'o',
+    'fixed-3-VW': 'o',
+    'fixed-10-VW': '-',
     'naiveVW': '',
     'ChaCha-Org': 's',
     'Chambent-Hybrid': 's',
@@ -69,6 +77,8 @@ FINAL_METHOD_marker = {
 FINAL_METHOD_hatch= {
     'fixed-50-VW': '-',
     'fixed-5-VW': 'x',
+    'fixed-3-VW': 'x',
+    'fixed-10-VW': 'x',
     'naiveVW': 'tab:brown',
     'ChaCha-Org': '/',
     'Chambent-Hybrid': '/',
@@ -83,6 +93,7 @@ MAIN_NAME_LIST = ['fixed-5-VW','Chambent-Hybrid']
 ABL_NAME_LIST = ['Chambent-Hybrid', 'ChaCha-nochampion-top0','ChaCha-ucb-top0']
 MAIN_NAME_LIST_2 = ['fixed-5-VW','ChaCha-Org']
 # MAIN_NAME_LIST_2 = ['fixed-5-VW','ChaCha-Final']
+MAIN_NAME_LIST_b3 = ['fixed-3-VW','ChaCha-Final']
 logger = logging.getLogger(__name__)
 # TODO:
 # 2. add config info in file name; 3. setup; 4. how to re-run a particular method
@@ -257,11 +268,13 @@ def plot_normalized_scores(res_dic, alias='', chacha_name='ChaCha-nochampion-top
 
 
 def normalized_scores_barplot(res_dic, alias='', method_list_to_show = [], error_bar=False, print_table=False,name_0='naive', name_1='fixed-50'):
-    all_names = [ 'fixed-5-VW', 'ChaCha-CB','ChaCha-Org','ChaCha', 'ChaCha-Final','ChaCha-nochampion-top0', 'ChaCha-ucb-top0','Chambent-Hybrid', 'Chambent-Van-ucb-tophalf']
+    all_names = [ 'fixed-5-VW','fixed-3-VW','fixed-10-VW', 'ChaCha-CB','ChaCha-Org','ChaCha', 'ChaCha-Final','ChaCha-nochampion-top0', 'ChaCha-ucb-top0','Chambent-Hybrid', 'Chambent-Van-ucb-tophalf']
     
-    table_method_names = ['fixed-5-VW','Chambent-Hybrid', 'ChaCha-nochampion-top0', 'ChaCha-ucb-top0']
+    table_method_names = ['fixed-5-VW', 'fixed-3-VW', 'fixed-10-VW','Chambent-Hybrid', 'ChaCha-nochampion-top0', 'ChaCha-ucb-top0']
     table_name_label = {
         'fixed-5-VW': '\RandomInit' ,
+        'fixed-3-VW': '\RandomInit' ,
+        'fixed-10-VW': '\RandomInit' ,
         'Chambent-Hybrid': '\Chambent' , 
         'ChaCha-nochampion-top0':'\Chambent-w/o-Champion', 
         'ChaCha-ucb-top0': '\Chambent-AggressiveScheduling',

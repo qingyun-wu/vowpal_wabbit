@@ -107,8 +107,11 @@ class TrainableVWTrial:
         # TODO: what if the loss function in the final evaluation phase is not the same as the one in get_sum_loss?
         self._result['loss_avg'] =  self._result['loss_sum']/self._result['data_sample_count']
         if not math.isinf(loss_bound): self._bound_of_loss = loss_bound
-        a = 0.001*self._bound_of_loss
-        comp_F = math.sqrt(self._dim)
+        # a = 0.001*self._bound_of_loss
+        # a = 0.02*self._bound_of_loss
+        a = 0.1*self._bound_of_loss
+        # a = 0.01*self._bound_of_loss 
+        comp_F = 1 #math.sqrt(self._dim) 
         n = self._result['data_sample_count']
         delta = TrainableVWTrial.prob_delta
         self._result['cb'] = a*comp_F*math.sqrt((np.log10(n/delta))/n) 
