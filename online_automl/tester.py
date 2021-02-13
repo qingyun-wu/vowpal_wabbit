@@ -19,12 +19,15 @@ from get_plots import FINAL_METHOD_color
 FINAL_METHOD_alias = {
     'fixed-50-VW': 'ExhaustInit',
     'fixed-5-VW': 'RandomInit',
+    'fixed-10-VW': 'RandomInit',
+    'fixed-3-VW': 'RandomInit',
     'naiveVW': 'Naive',
     'oracleVW': 'oracleVW',
     'ChaCha-Org': 'ChaCha',
     'Chambent-Hybrid': 'ChaCha-Hybrid',
     'ChaCha-Demo': 'ChaCha',
-    'ChaCha-Final': 'ChaCha-Final'
+    'ChaCha-Final': 'ChaCha-Final',
+    'ChaCha-5-Final': 'ChaCha-5-Final'
 }
 
 logger = logging.getLogger(__name__)
@@ -322,13 +325,17 @@ if __name__=='__main__':
 
         #instantiate several vw learners (as baselines) and an AutoOnlineLearner
         alg_dic = {}
-        if 'simulation' in dataset: alg_dic['oracleVW'] = pyvw.vw(q=['ab','ac','cd'], \
+        if 'simulation' in dataset: 
+            alg_dic['oracleVW'] = pyvw.vw(q=['ab','ac','cd'], \
             **fixed_hp_config)
+            # alg_dic['oracleVW'] = pyvw.vw(q=['ab',], \
+            # **fixed_hp_config)
         alg_dic['naiveVW'] = pyvw.vw(**fixed_hp_config)
 
+        logger.debug('dim %s', feature_dim*MIN_RES_CONST)
         ## setup configs for other autoVW methods
         auto_alg_common_args = {
-            "min_resource_budget": feature_dim*MIN_RES_CONST, 
+            "min_resource_budget": 10,#feature_dim*MIN_RES_CONST, 
             "concurrent_running_budget":args.policy_budget,
             "namespace_feature_dim": namespace_feature_dim if namespace_feature_dim else None, 
             "fixed_hp_config":fixed_hp_config,
@@ -373,6 +380,11 @@ if __name__=='__main__':
         
         ChaCha_final = {
             "trial_runner_name": 'ChaCha-Final',
+            'remove_worse': 1,
+            }
+
+        ChaCha_final_5 = {
+            "trial_runner_name": 'ChaCha-5-Final',
             'remove_worse': 1,
             }
 
@@ -463,7 +475,7 @@ if __name__=='__main__':
             'remove_worse': 1,
             }
         baseline_auto_methods = [fixed_b_vw, fixed_b_vw_50] #autocross
-        auto_alg_args_ist = [ChaCha,ChaCha_CB, ChaCha_keep_0, ChaCha_demo, ChaCha_final, ChaCha_no_champion, \
+        auto_alg_args_ist = [ChaCha_final_5, ChaCha,ChaCha_CB, ChaCha_keep_0, ChaCha_demo, ChaCha_final, ChaCha_no_champion, \
              Chambent_test, Chambent_hybrid, Chambent_vanilla, Chambent_van_top1, Chambent_van_tophalf,
              Chambent_van_tophalf_champion,] 
         for alg_args in (baseline_auto_methods + auto_alg_args_ist):
